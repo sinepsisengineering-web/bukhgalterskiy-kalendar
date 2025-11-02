@@ -14,19 +14,7 @@ import { SettingsView } from './components/SettingsView';
 import { Client, Task, TaskStatus, LegalForm, TaxSystem, ReminderSetting } from './types';
 import { generateTasksForClient, updateTaskStatuses } from './services/taskGenerator';
 
-// =========== [БЛОК 1: ДОБАВЛЕНО] - ТИПЫ ДЛЯ ELECTRON API ===========
-// Эта секция нужна, чтобы TypeScript "знал" о существовании window.electronAPI
-// и не выдавал ошибку.
-declare global {
-  interface Window {
-    electronAPI: {
-      onUpdateAvailable: (callback: () => void) => void;
-      onUpdateDownloaded: (callback: () => void) => void;
-      restartApp: () => void;
-    };
-  }
-}
-// ====================================================================
+
 
 // Dummy Data for initial load
 const DUMMY_CLIENTS: Client[] = [
@@ -247,24 +235,7 @@ const App: React.FC = () => {
         return () => clearInterval(interval);
     }, [tasks, clients, notifiedTaskIds]);
 
-    // =========== [БЛОК 2: ДОБАВЛЕНО] - ЛОГИКА ОБНОВЛЕНИЙ ===========
-    const [isUpdateAvailable, setUpdateAvailable] = useState(false);
-    const [isUpdateDownloaded, setUpdateDownloaded] = useState(false);
-
-    useEffect(() => {
-      // Подписываемся на события от Electron
-      window.electronAPI.onUpdateAvailable(() => {
-        setUpdateAvailable(true);
-      });
-      window.electronAPI.onUpdateDownloaded(() => {
-        setUpdateDownloaded(true);
-      });
-    }, []);
-
-    const handleRestartForUpdate = () => {
-      window.electronAPI.restartApp();
-    };
-    // ===============================================================
+   
 
     // ======== HANDLERS - CLIENTS ========
     const handleSaveClient = (clientData: Client) => {
@@ -442,43 +413,7 @@ const App: React.FC = () => {
             <main className="flex-1 p-8 overflow-y-auto relative"> {/* Добавлено "relative" для позиционирования */}
                 {renderContent()}
                 
-                {/* =========== [БЛОК 3: ДОБАВЛЕНО] - ПАНЕЛЬ ОБНОВЛЕНИЯ =========== */}
-                {isUpdateDownloaded && (
-                    <div 
-                        style={{
-                            position: 'absolute',
-                            bottom: '20px',
-                            left: '50%',
-                            transform: 'translateX(-50%)',
-                            padding: '12px 20px',
-                            backgroundColor: '#1a202c',
-                            color: 'white',
-                            borderRadius: '8px',
-                            boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '15px',
-                            zIndex: 1000,
-                        }}
-                    >
-                        <span>Обновление скачано и готово к установке.</span>
-                        <button 
-                            onClick={handleRestartForUpdate}
-                            style={{
-                                padding: '8px 16px',
-                                border: 'none',
-                                borderRadius: '6px',
-                                backgroundColor: '#4299e1',
-                                color: 'white',
-                                cursor: 'pointer',
-                                fontWeight: 'bold'
-                            }}
-                        >
-                            Перезапустить
-                        </button>
-                    </div>
-                )}
-                {/* ==================================================================== */}
+              
 
             </main>
 
