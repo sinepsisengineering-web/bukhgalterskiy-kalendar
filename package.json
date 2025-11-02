@@ -1,0 +1,55 @@
+{
+  "name": "bukhgalterskiy-kalendar",
+  "version": "1.0.0",
+  "description": "Приложение-ассистент для бухгалтеров на аутсорсе.",
+  "main": "electron.cjs",
+  "author": "AI Assistant",
+  "license": "MIT",
+  "scripts": {
+    "dev": "concurrently -k \"npm:vite\" \"npm:electron\"",
+    "vite": "vite",
+    "electron": "wait-on tcp:5173 && electron .",
+    "build": "vite build && electron-builder",
+    "pack": "npm run build",
+    "dist": "npm run build"
+  },
+  "dependencies": {
+    "electron-updater": "^6.6.2",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "concurrently": "^8.2.2",
+    "electron": "^28.2.0",
+    "electron-builder": "^24.9.1",
+    "typescript": "^5.5.3",
+    "vite": "^5.3.3",
+    "wait-on": "^7.2.0"
+  },
+  "build": {
+    "appId": "com.buh-assistant.app",
+    "productName": "Бухгалтер-Ассистент",
+    "files": [
+      "dist/**/*",
+      "electron.cjs"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "assets/icon.icns"
+    },
+    "linux": {
+      "target": "AppImage",
+      "icon": "assets/icon.png"
+    }
+  }
+}
