@@ -5,13 +5,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Запрос версии
   getVersion: () => ipcRenderer.invoke('get-app-version'),
   
-  // Отправка команды на проверку обновлений
+  // Отправка команд
   checkUpdates: () => ipcRenderer.send('check-for-updates'),
-  
-  // Отправка команды на перезапуск
   restartApp: () => ipcRenderer.send('restart_app'),
 
-  // Прослушивание событий от главного процесса
-  onUpdateProgress: (callback) => ipcRenderer.on('update-progress', (_event, progressInfo) => callback(progressInfo)),
-  onUpdateMessage: (callback) => ipcRenderer.on('update-message', (_event, message) => callback(message)),
+  // Прослушивание событий
+  // ВАЖНО: Мы теперь возвращаем функцию для отписки!
+  onUpdateMessage: (callback) => {
+    const listener = (_event, message) => callback(message);
+    ipcRenderer.on('update-message', listener);
+    return () => ipcRenderer.removeListener('update-message', listener);
+  },
+  onUpdateProgress: (callback) => {
+    const listener = (_event, progressInfo) => callback(progressInfo);
+    ipcRenderer.on('update-progress', listener);
+    return () => ipcRenderer.removeListener('update-progress', listener);
+  },
 });

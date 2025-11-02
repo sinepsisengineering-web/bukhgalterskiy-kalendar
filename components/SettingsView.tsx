@@ -1,6 +1,19 @@
 // components/SettingsView.tsx
 import React, { useState, useEffect } from 'react';
 
+// ВАЖНО: Добавляем этот блок, чтобы TypeScript знал о window.electronAPI
+declare global {
+  interface Window {
+    electronAPI: {
+      getVersion: () => Promise<string>;
+      checkUpdates: () => void;
+      restartApp: () => void;
+      onUpdateMessage: (callback: (message: UpdateMessage) => void) => () => void;
+      onUpdateProgress: (callback: (progressInfo: ProgressInfo) => void) => () => void;
+    };
+  }
+}
+
 // Типы для информации о прогрессе и сообщениях
 interface ProgressInfo {
   percent: number;
@@ -34,14 +47,12 @@ export const SettingsView = ({ onClearData }: { onClearData: () => void; }) => {
       setProgressInfo(info);
     });
 
-    // Отписка при размонтировании компонента
+    // Отписка при размонтировании компонента. Теперь это будет работать правильно!
     return () => {
-      // @ts-ignore
       removeMessageListener();
-      // @ts-ignore
       removeProgressListener();
     };
-  }, []);
+  }, []); // Пустой массив зависимостей - эффект выполнится один раз
 
   const handleRequestPermission = () => {
     Notification.requestPermission().then(setPermissionStatus);
@@ -96,7 +107,7 @@ export const SettingsView = ({ onClearData }: { onClearData: () => void; }) => {
         {(updateMessage || progressInfo) && <div className="mt-4 border-t pt-4">
             {updateMessage && <p className="text-sm text-center text-gray-600 mb-2">{updateMessage.text}</p>}
             {progressInfo && <div className="w-full bg-gray-200 rounded-full h-2.5"><div className="bg-blue-500 h-2.5 rounded-full" style={{ width: `${progressInfo.percent.toFixed(2)}%` }}></div></div>}
-            {updateMessage?.status === 'downloaded' && <button onClick={handleRestart} className="mt-4 w-full px-4 py-2 bg-green-60á00 text-white font-semibold rounded-md shadow-sm hover:bg-green-700">Перезапустить и установить</button>}
+            {updateMessage?.status === 'downloaded' && <button onClick={handleRestart} className="mt-4 w-full px-4 py-2 bg-green-600 text-white font-semibold rounded-md shadow-sm hover:bg-green-700">Перезапустить и установить</button>}
         </div>}
       </div>
 
