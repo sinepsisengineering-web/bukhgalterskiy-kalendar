@@ -32,9 +32,13 @@
   "build": {
     "appId": "com.buh-assistant.app",
     "productName": "Бухгалтер-Ассистент",
+    "publish": {
+      "provider": "github"
+    },
     "files": [
       "dist/**/*",
-      "electron.cjs"
+      "electron.cjs",
+      "preload.js"
     ],
     "directories": {
       "output": "release"
