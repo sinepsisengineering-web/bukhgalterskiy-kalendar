@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Task, Client, TaskDueDateRule, RepeatFrequency, ReminderSetting } from '../types';
 
 interface TaskFormProps {
@@ -12,7 +12,7 @@ interface TaskFormProps {
 type FormData = {
     title: string;
     description: string;
-    dueDate: string; // YYYY-MM-DD format
+    dueDate: string; // Формат YYYY-MM-DD для <input type="date">
     dueTime: string;
     showTime: boolean;
     dueDateRule: TaskDueDateRule;
@@ -28,42 +28,39 @@ const toInputDateString = (date: Date): string => {
     return `${year}-${month}-${day}`;
 };
 
+// === НОВЫЙ КОД: Функция для вычисления максимальной даты ===
+const getMaxDateString = (): string => {
+    const maxYear = new Date().getFullYear() + 2;
+    // Устанавливаем последний день года (31 декабря)
+    return `${maxYear}-12-31`;
+};
+
+
 export const TaskForm: React.FC<TaskFormProps> = ({ clients, onSave, onCancel, taskToEdit, defaultDate }) => {
     
     const getInitialState = (): FormData => {
-        if (taskToEdit) {
-            return {
-                title: taskToEdit.title,
-                description: taskToEdit.description || '',
-                dueDate: toInputDateString(taskToEdit.dueDate),
-                dueTime: taskToEdit.dueTime || '',
-                showTime: !!taskToEdit.dueTime,
-                dueDateRule: taskToEdit.dueDateRule,
-                clientIds: taskToEdit.clientIds,
-                repeat: taskToEdit.repeat,
-                reminder: taskToEdit.reminder,
-            };
-        }
+        const initialDate = taskToEdit ? taskToEdit.dueDate : (defaultDate || new Date());
         return {
-            title: '',
-            description: '',
-            dueDate: toInputDateString(defaultDate || new Date()),
-            dueTime: '',
-            showTime: false,
-            dueDateRule: TaskDueDateRule.NextBusinessDay,
-            clientIds: [],
-            repeat: RepeatFrequency.None,
-            reminder: ReminderSetting.OneDay,
+            title: taskToEdit?.title || '',
+            description: taskToEdit?.description || '',
+            dueDate: toInputDateString(initialDate),
+            dueTime: taskToEdit?.dueTime || '',
+            showTime: !!taskToEdit?.dueTime,
+            dueDateRule: taskToEdit?.dueDateRule || TaskDueDateRule.NextBusinessDay,
+            clientIds: taskToEdit?.clientIds || [],
+            repeat: taskToEdit?.repeat || RepeatFrequency.None,
+            reminder: taskToEdit?.reminder || ReminderSetting.OneDay,
         };
     };
     
-    const [formData, setFormData] = useState<FormData>(getInitialState());
-
-    useEffect(() => {
-        setFormData(getInitialState());
-    }, [taskToEdit, defaultDate]);
+    const [formData, setFormData] = useState<FormData>(() => getInitialState());
+    const [error, setError] = useState<string | null>(null);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+        if (error) {
+            setError(null);
+        }
+
         const { name, value, type } = e.target;
         if (type === 'checkbox') {
              const { checked } = e.target as HTMLInputElement;
@@ -77,9 +74,12 @@ export const TaskForm: React.FC<TaskFormProps> = ({ clients, onSave, onCancel, t
     };
 
     const handleClientChange = (e: React.ChangeEvent<HTMLSelectElement>, index: number) => {
+        if (error) {
+            setError(null);
+        }
         const newClientIds = [...formData.clientIds];
         newClientIds[index] = e.target.value;
-        setFormData(prev => ({ ...prev, clientIds: newClientIds.filter(id => id) })); // Filter out empty strings
+        setFormData(prev => ({ ...prev, clientIds: newClientIds.filter(id => id) }));
     };
 
     const addClientSelector = () => {
@@ -94,17 +94,40 @@ export const TaskForm: React.FC<TaskFormProps> = ({ clients, onSave, onCancel, t
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
+        setError(null);
+
+        const [year, month, day] = formData.dueDate.split('-').map(Number);
+        const submittedDate = new Date(year, month - 1, day);
+
         if(!formData.title) {
-            alert("Название задачи не может быть пустым.");
+            setError("Название задачи не может быть пустым.");
+            return;
+        }
+        
+        if(!formData.dueDate || isNaN(submittedDate.getTime())){
+            setError("Укажите корректную дату выполнения.");
             return;
         }
 
-        const [year, month, day] = formData.dueDate.split('-').map(Number);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        if (submittedDate < today) {
+            setError("Нельзя создавать задачи задним числом.");
+            return;
+        }
+
+        const currentYear = new Date().getFullYear();
+        const minYear = currentYear - 2;
+        const maxYear = currentYear + 2;
+        if (year < minYear || year > maxYear) {
+            setError(`Год должен быть в диапазоне от ${minYear} до ${maxYear}.`);
+            return;
+        }
 
         onSave({
             title: formData.title,
             description: formData.description,
-            dueDate: new Date(year, month - 1, day),
+            dueDate: submittedDate,
             dueTime: formData.showTime ? formData.dueTime : undefined,
             dueDateRule: formData.dueDateRule,
             clientIds: formData.clientIds,
@@ -117,6 +140,12 @@ export const TaskForm: React.FC<TaskFormProps> = ({ clients, onSave, onCancel, t
 
     return (
         <form onSubmit={handleSubmit} className="space-y-6">
+            {error && (
+                <div className="p-4 mb-4 text-sm text-red-800 rounded-lg bg-red-50" role="alert">
+                    <span className="font-medium">Ошибка:</span> {error}
+                </div>
+            )}
+            
             <div>
                 <label htmlFor="title" className="block text-sm font-medium text-slate-700">Название задачи *</label>
                 <input type="text" name="title" id="title" value={formData.title} onChange={handleChange} required className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md shadow-sm text-slate-900" />
@@ -130,7 +159,17 @@ export const TaskForm: React.FC<TaskFormProps> = ({ clients, onSave, onCancel, t
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                 <div>
                      <label htmlFor="dueDate" className="block text-sm font-medium text-slate-700">Дата выполнения</label>
-                     <input type="date" name="dueDate" id="dueDate" value={formData.dueDate} onChange={handleChange} className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md shadow-sm text-slate-900" />
+                     {/* === ИЗМЕНЕННЫЙ КОД: Добавлен атрибут max === */}
+                     <input
+                        type="date"
+                        name="dueDate"
+                        id="dueDate"
+                        value={formData.dueDate}
+                        min={toInputDateString(new Date())}
+                        max={getMaxDateString()}
+                        onChange={handleChange}
+                        className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md shadow-sm text-slate-900"
+                    />
                 </div>
                  <div>
                     <label htmlFor="dueDateRule" className="block text-sm font-medium text-slate-700">Правило переноса</label>
@@ -141,15 +180,14 @@ export const TaskForm: React.FC<TaskFormProps> = ({ clients, onSave, onCancel, t
                     </select>
                 </div>
             </div>
-
-             <div className="flex items-center">
+            
+            <div className="flex items-center">
                 <input type="checkbox" name="showTime" id="showTime" checked={formData.showTime} onChange={handleChange} className="h-4 w-4 bg-white text-slate-900 focus:ring-slate-500 border-slate-400 rounded" />
                 <label htmlFor="showTime" className="ml-2 block text-sm text-slate-900">Указать время</label>
                 {formData.showTime && (
                     <input type="time" name="dueTime" value={formData.dueTime} onChange={handleChange} className="ml-4 px-3 py-1 bg-white border border-slate-300 rounded-md shadow-sm text-slate-900" />
                 )}
             </div>
-
             <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Клиенты</label>
                 <div className="space-y-2">
@@ -163,7 +201,9 @@ export const TaskForm: React.FC<TaskFormProps> = ({ clients, onSave, onCancel, t
                                 ))}
                             </select>
                             <button type="button" onClick={() => removeClientSelector(index)} className="p-2 text-red-500 hover:text-red-700">
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 012 0v6a1 1 0 11-2 0V8z" clipRule="evenodd" /></svg>
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 012 0v6a1 1 0 11-2 0V8z" clipRule="evenodd" />
+                                </svg>
                             </button>
                         </div>
                     ))}
@@ -178,7 +218,6 @@ export const TaskForm: React.FC<TaskFormProps> = ({ clients, onSave, onCancel, t
                     <button type="button" onClick={addClientSelector} className="mt-2 text-sm font-semibold text-indigo-600 hover:text-indigo-800">+ Добавить клиента</button>
                 )}
             </div>
-
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                 <div>
                     <label htmlFor="repeat" className="block text-sm font-medium text-slate-700">Повторение</label>
@@ -201,11 +240,11 @@ export const TaskForm: React.FC<TaskFormProps> = ({ clients, onSave, onCancel, t
                     </select>
                 </div>
             </div>
-
             <div className="pt-4 flex justify-end gap-4">
                 <button type="button" onClick={onCancel} className="px-4 py-2 text-sm font-semibold text-slate-700 bg-white border border-slate-300 rounded-md hover:bg-slate-50">Отмена</button>
                 <button type="submit" className="px-4 py-2 text-sm font-semibold text-white bg-indigo-600 border border-transparent rounded-md hover:bg-indigo-700">Сохранить</button>
             </div>
+
         </form>
     );
 };
