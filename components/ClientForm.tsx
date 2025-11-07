@@ -18,29 +18,38 @@ const toInputDateString = (date?: Date | string): string => {
     return `${year}-${month}-${day}`;
 };
 
+// Выносим начальное состояние в константу для переиспользования
+const initialFormData: Omit<Client, 'id'> = {
+  name: '',
+  legalForm: LegalForm.OOO,
+  inn: '',
+  kpp: '',
+  ogrn: '',
+  ogrnDate: undefined,
+  legalAddress: '',
+  actualAddress: '',
+  contactPerson: '',
+  phone: '',
+  email: '',
+  taxSystems: [TaxSystem.USN_DOHODY],
+  hasEmployees: false,
+  notes: '',
+  credentials: [],
+  patents: [],
+  isArchived: false, // Добавляем недостающее поле
+};
+
 export const ClientForm: React.FC<ClientFormProps> = ({ client, onSave, onCancel }) => {
-  const [formData, setFormData] = useState<Omit<Client, 'id'>>({
-    name: '',
-    legalForm: LegalForm.OOO,
-    inn: '',
-    kpp: '',
-    ogrn: '',
-    ogrnDate: undefined,
-    legalAddress: '',
-    actualAddress: '',
-    contactPerson: '',
-    phone: '',
-    email: '',
-    taxSystems: [TaxSystem.USN_DOHODY],
-    hasEmployees: false,
-    notes: '',
-    credentials: [],
-    patents: [],
-  });
+  const [formData, setFormData] = useState(initialFormData);
 
   useEffect(() => {
     if (client) {
-      setFormData({ ...client, patents: client.patents || [] });
+      // Если редактируем, заполняем форму данными клиента
+      // Гарантируем, что все поля из initialFormData будут присутствовать
+      setFormData({ ...initialFormData, ...client, patents: client.patents || [] });
+    } else {
+      // Если создаем нового, СБРАСЫВАЕМ форму к начальному состоянию
+      setFormData(initialFormData);
     }
   }, [client]);
 

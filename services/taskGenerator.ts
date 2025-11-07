@@ -82,18 +82,11 @@ export const isTaskCompletable = (task: Task, currentDate: Date = new Date()): b
     
     let periodStartDate: Date;
 
-    // A task becomes completable when its reporting period ends.
-    // Generally, this is the first day of the month/quarter/year the payment/declaration is due.
-
     if (title.includes('месяц')) {
-        // Monthly tasks (e.g., for February) are due in March. They become completable on March 1st.
         periodStartDate = new Date(taskYear, taskMonth, 1);
     } else if (title.includes('год')) {
-        // Yearly tasks (e.g., for 2024) are due in 2025. They become completable on Jan 1st, 2025.
         periodStartDate = new Date(taskYear, 0, 1);
     } else {
-        // Default to quarterly logic for everything else (НДС, УСН авансы, прибыль авансы).
-        // A task for Q1 (Jan-Mar) is due in April. It becomes completable on April 1st.
         const taskQuarter = getQuarter(taskDueDate);
         periodStartDate = new Date(taskYear, taskQuarter * 3, 1);
     }
@@ -109,9 +102,11 @@ const generateTasksForYears = (
   isPeriodLocked: boolean = false
 ): Task[] => {
   const tasks: Task[] = [];
-  const seriesId = `series-auto-${client.id}-${Math.random()}`;
   years.forEach(year => {
     taskGenerator(year).forEach(taskInfo => {
+      // Создаем стабильный seriesId на основе ID клиента и названия задачи
+      const stableSeriesId = `series-auto-${client.id}-${taskInfo.title.replace(/\s+/g, '-')}-${year}`;
+
       const rawDueDate = new Date(year, taskInfo.month, taskInfo.day);
       const dueDate = adjustDate(rawDueDate, rule);
       tasks.push({
@@ -124,7 +119,7 @@ const generateTasksForYears = (
         dueDateRule: rule,
         repeat: RepeatFrequency.Yearly,
         reminder: ReminderSetting.OneWeek,
-        seriesId,
+        seriesId: stableSeriesId, // Используем новый стабильный ID
         isPeriodLocked: isPeriodLocked,
       });
     });
@@ -145,7 +140,7 @@ export const generateTasksForClient = (client: Client): Task[] => {
             { title: 'Авансовый платеж по УСН за 1 квартал', month: 3, day: 28 },
             { title: 'Авансовый платеж по УСН за полугодие', month: 6, day: 28 },
             { title: 'Авансовый платеж по УСН за 9 месяцев', month: 9, day: 28 },
-            { title: 'Декларация по УСН за год', month: 3, day: 28 }, // For orgs; IP is month 4, day 28. Simplified for demo.
+            { title: 'Декларация по УСН за год', month: 3, day: 28 },
             { title: 'Страховые взносы за себя (фикс.)', month: 11, day: 31 }
           ], TaskDueDateRule.NextBusinessDay, true));
           break;
@@ -162,12 +157,10 @@ export const generateTasksForClient = (client: Client): Task[] => {
           ], TaskDueDateRule.NextBusinessDay, true));
           break;
         case TaxSystem.PATENT:
-           // Logic is now handled below based on specific patent data
           break;
       }
   });
 
-  // New Patent Task Generation Logic
   if (client.taxSystems.includes(TaxSystem.PATENT) && client.patents && client.patents.length > 0) {
       const todayYear = new Date().getFullYear();
       client.patents.forEach(patent => {
@@ -175,15 +168,11 @@ export const generateTasksForClient = (client: Client): Task[] => {
           const originalEndDate = new Date(patent.endDate);
           const originalStartYear = originalStartDate.getFullYear();
           
-          // Determine the first year we should generate a renewal task for.
-          // It's either the patent's start year or the current year, whichever is later.
           const firstYearForRenewalCheck = Math.max(originalStartYear, todayYear);
 
           yearsToGenerate.forEach(year => {
-              // Skip years before the patent's first start year
               if (year < originalStartYear) return;
               
-              // For future years, only generate payment tasks if auto-renew is on
               if (year > originalStartYear && !patent.autoRenew) return;
 
               const yearOffset = year - originalStartYear;
@@ -198,7 +187,6 @@ export const generateTasksForClient = (client: Client): Task[] => {
 
               const seriesId = `series-patent-${patent.id}-${year}`;
 
-              // --- Payment Task Generation (Forecasts for future years if auto-renew is on) ---
               if (durationMonths <= 6) {
                   const dueDate = new Date(currentYearEndDate);
                   const adjustedDueDate = adjustDate(dueDate, TaskDueDateRule.PreviousBusinessDay);
@@ -249,10 +237,7 @@ export const generateTasksForClient = (client: Client): Task[] => {
                       isPeriodLocked: true,
                   });
               }
-              // --- End of Payment Task Generation ---
 
-              // --- MODIFIED Renewal Task Generation ---
-              // Generate a single, separate renewal reminder for the next upcoming period.
               if (patent.autoRenew && year === firstYearForRenewalCheck) {
                   const renewalDate = new Date(currentYearEndDate);
                   renewalDate.setMonth(renewalDate.getMonth() - 1);
@@ -267,7 +252,7 @@ export const generateTasksForClient = (client: Client): Task[] => {
                       dueDateRule: TaskDueDateRule.PreviousBusinessDay,
                       repeat: RepeatFrequency.None,
                       reminder: ReminderSetting.OneWeek,
-                      seriesId, // Associates it with the payment tasks of the year it's due
+                      seriesId,
                       isPeriodLocked: false,
                   });
               }
@@ -284,7 +269,7 @@ export const generateTasksForClient = (client: Client): Task[] => {
             employeeTasks.push({ title: `Персонифицированные сведения за месяц ${i+1}`, month: i + 1, day: 25 });
         }
         return employeeTasks;
-    }, TaskDueDateRule.PreviousBusinessDay, true)); // Salary related tasks ARE now locked
+    }, TaskDueDateRule.PreviousBusinessDay, true));
   }
 
   return allTasks;

@@ -29,8 +29,8 @@ export const TasksListView: React.FC<TasksListViewProps> = ({ tasks, clients, on
     // Selection State
     const [selectedTasks, setSelectedTasks] = useState<Set<string>>(new Set());
 
-    const scrollTargetRef = useRef<HTMLDivElement>(null);
-    const todayRef = useRef<HTMLDivElement>(null);
+    const scrollTargetRef = useRef<HTMLDivElement | null>(null);
+    const todayRef = useRef<HTMLDivElement | null>(null);
     
     const handleStatusToggle = (status: TaskStatus) => {
         setSelectedStatuses(prev => {
@@ -249,12 +249,12 @@ export const TasksListView: React.FC<TasksListViewProps> = ({ tasks, clients, on
                             <div className="space-y-3">
                                 {taskGroups.map(group => (
                                     <TasksListItem
-                                        key={group[0].seriesId || group[0].id}
-                                        tasks={group}
-                                        clients={clients}
-                                        onOpenDetail={onOpenDetail}
-                                        selectedTasks={selectedTasks}
-                                        onTaskSelect={handleTaskSelect}
+                                         key={`${date}-${group[0].id}`}
+                                            tasks={group}
+                                            clients={clients}
+                                            onOpenDetail={onOpenDetail}
+                                            selectedTasks={selectedTasks}
+                                            onTaskSelect={handleTaskSelect}
                                     />
                                 ))}
                             </div>

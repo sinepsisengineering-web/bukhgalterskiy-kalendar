@@ -9,7 +9,7 @@
     "dev": "concurrently -k \"npm:vite\" \"npm:electron\"",
     "vite": "vite",
     "electron": "wait-on tcp:5173 && electron .",
-    "build": "vite build && electron-builder",
+    "build": "vite build && electron-builder --publish always",
     "pack": "npm run build",
     "dist": "npm run build"
   },
