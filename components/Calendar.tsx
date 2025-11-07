@@ -27,6 +27,7 @@ interface CalendarProps {
   onUpdateTaskStatus: (taskId: string, status: TaskStatus) => void;
   onAddTask: (date: Date) => void;
   onOpenDetail: (tasks: Task[]) => void;
+  onDeleteTask: (taskId: string) => void; // === ИЗМЕНЕНИЕ: Добавляем пропс onDeleteTask ===
 }
 
 type CalendarView = 'day' | 'week' | 'month' | 'quarter' | 'year';
@@ -40,7 +41,17 @@ const AddTaskButton: React.FC<{onClick?: () => void}> = ({onClick}) => (
     </button>
 );
 
-const DayView: React.FC<{ tasks: Task[]; clients: Client[]; currentDate: Date; onAddTask: (date: Date) => void; onOpenDetail: (tasks: Task[]) => void; }> = ({ tasks, clients, currentDate, onAddTask, onOpenDetail }) => {
+// === ИЗМЕНЕНИЕ: DayViewProps теперь включает onDeleteTask ===
+interface DayViewProps {
+    tasks: Task[];
+    clients: Client[];
+    currentDate: Date;
+    onAddTask: (date: Date) => void;
+    onOpenDetail: (tasks: Task[]) => void;
+    onDeleteTask: (taskId: string) => void;
+}
+
+const DayView: React.FC<DayViewProps> = ({ tasks, clients, currentDate, onAddTask, onOpenDetail, onDeleteTask }) => {
   const tasksForDay = useMemo(() => tasks.filter(t => t.dueDate.toDateString() === currentDate.toDateString()), [tasks, currentDate]);
   
   const groupedTasks = useMemo(() => {
@@ -64,8 +75,9 @@ const DayView: React.FC<{ tasks: Task[]; clients: Client[]; currentDate: Date; o
         <AddTaskButton onClick={() => onAddTask(currentDate)} />
       </div>
       <div className="space-y-3 max-h-[65vh] overflow-y-auto pr-2">
+        {/* === ИЗМЕНЕНИЕ: Передаем onDeleteTask в TaskItem === */}
         {groupedTasks.length > 0 ? groupedTasks.map(group => (
-            <TaskItem key={group[0].seriesId || group[0].id} tasks={group} clients={clients} onOpenDetail={onOpenDetail} />
+            <TaskItem key={group[0].seriesId || group[0].id} tasks={group} clients={clients} onOpenDetail={onOpenDetail} onDeleteTask={onDeleteTask} />
         )) : <p className="text-center text-slate-500 py-8">На этот день задач нет.</p>}
       </div>
     </div>
@@ -265,7 +277,7 @@ const YearView: React.FC<{ tasks: Task[]; currentDate: Date; onSelectDate: (date
     );
 };
 
-export const Calendar: React.FC<CalendarProps> = ({ tasks, clients, onUpdateTaskStatus, onAddTask, onOpenDetail }) => {
+export const Calendar: React.FC<CalendarProps> = ({ tasks, clients, onUpdateTaskStatus, onAddTask, onOpenDetail, onDeleteTask }) => {
   const [view, setView] = useState<CalendarView>('month');
   const [currentDate, setCurrentDate] = useState(new Date());
 
@@ -357,7 +369,8 @@ export const Calendar: React.FC<CalendarProps> = ({ tasks, clients, onUpdateTask
         </div>
       </div>
       
-      {view === 'day' && <DayView tasks={tasks} clients={clients} currentDate={currentDate} onAddTask={onAddTask} onOpenDetail={onOpenDetail}/>}
+      {/* === ИЗМЕНЕНИЕ: Передаем onDeleteTask в DayView === */}
+      {view === 'day' && <DayView tasks={tasks} clients={clients} currentDate={currentDate} onAddTask={onAddTask} onOpenDetail={onOpenDetail} onDeleteTask={onDeleteTask} />}
       {view === 'week' && <WeekView tasks={tasks} clients={clients} currentDate={currentDate} onSelectDate={handleSelectDate} onAddTask={onAddTask} onOpenDetail={onOpenDetail} />}
       {view === 'month' && <MonthView tasks={tasks} clients={clients} currentDate={currentDate} onSelectDate={handleSelectDate} onAddTask={onAddTask} onOpenDetail={onOpenDetail} />}
       {view === 'quarter' && <QuarterView tasks={tasks} currentDate={currentDate} onSelectDate={handleSelectDate} onAddTask={onAddTask} />}

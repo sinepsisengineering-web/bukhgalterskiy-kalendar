@@ -10,6 +10,10 @@ interface ClientFormProps {
 
 const toInputDateString = (date?: Date | string): string => {
     if (!date) return '';
+    // Если это уже строка в нужном формате, просто возвращаем ее
+    if (typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        return date;
+    }
     const d = new Date(date);
     if (isNaN(d.getTime())) return '';
     const year = d.getFullYear();
@@ -18,7 +22,21 @@ const toInputDateString = (date?: Date | string): string => {
     return `${year}-${month}-${day}`;
 };
 
-// Выносим начальное состояние в константу для переиспользования
+const getMaxDateString = (): string => {
+    const maxYear = new Date().getFullYear() + 10;
+    return `${maxYear}-12-31`;
+};
+
+// === ИЗМЕНЕНИЕ 1: Определяем тип для данных формы, где даты патентов являются строками ===
+interface PatentFormData extends Omit<Patent, 'startDate' | 'endDate'> {
+    startDate: string;
+    endDate: string;
+}
+
+interface ClientFormData extends Omit<Client, 'id' | 'patents'> {
+    patents: PatentFormData[];
+}
+
 const initialFormData: Omit<Client, 'id'> = {
   name: '',
   legalForm: LegalForm.OOO,
@@ -36,20 +54,34 @@ const initialFormData: Omit<Client, 'id'> = {
   notes: '',
   credentials: [],
   patents: [],
-  isArchived: false, // Добавляем недостающее поле
+  isArchived: false,
 };
 
 export const ClientForm: React.FC<ClientFormProps> = ({ client, onSave, onCancel }) => {
-  const [formData, setFormData] = useState(initialFormData);
+  const [formData, setFormData] = useState<ClientFormData>(() => {
+    // Преобразуем начальные данные в формат формы
+    const patentsWithStringDates = (client?.patents || []).map(p => ({
+        ...p,
+        startDate: toInputDateString(p.startDate),
+        endDate: toInputDateString(p.endDate)
+    }));
+    if (client) {
+        return { ...initialFormData, ...client, patents: patentsWithStringDates };
+    }
+    return { ...initialFormData, patents: [] };
+  });
 
   useEffect(() => {
+    // Логика для сброса/заполнения формы при изменении пропса client
+     const patentsWithStringDates = (client?.patents || []).map(p => ({
+        ...p,
+        startDate: toInputDateString(p.startDate),
+        endDate: toInputDateString(p.endDate)
+    }));
     if (client) {
-      // Если редактируем, заполняем форму данными клиента
-      // Гарантируем, что все поля из initialFormData будут присутствовать
-      setFormData({ ...initialFormData, ...client, patents: client.patents || [] });
+      setFormData({ ...initialFormData, ...client, patents: patentsWithStringDates });
     } else {
-      // Если создаем нового, СБРАСЫВАЕМ форму к начальному состоянию
-      setFormData(initialFormData);
+      setFormData({ ...initialFormData, patents: [] });
     }
   }, [client]);
 
@@ -96,22 +128,25 @@ export const ClientForm: React.FC<ClientFormProps> = ({ client, onSave, onCancel
     setFormData(prev => ({ ...prev, credentials: newCredentials }));
   };
 
-  const handlePatentChange = (index: number, field: keyof Omit<Patent, 'id'>, value: string | boolean) => {
-    const newPatents = [...(formData.patents || [])];
+  // === ИЗМЕНЕНИЕ 2: Упрощаем обработчик, он теперь всегда работает со строками/булевыми ===
+  const handlePatentChange = (index: number, field: keyof Omit<PatentFormData, 'id'>, value: string | boolean) => {
+    const newPatents = [...formData.patents];
     newPatents[index] = { ...newPatents[index], [field]: value };
     setFormData(prev => ({ ...prev, patents: newPatents }));
   };
   
   const addPatent = () => {
-    const newPatent: Patent = { id: `patent-${Date.now()}`, name: '', startDate: '', endDate: '', autoRenew: false };
+    // Новый патент создается с пустыми строками для дат
+    const newPatent: PatentFormData = { id: `patent-${Date.now()}`, name: '', startDate: '', endDate: '', autoRenew: false };
     setFormData(prev => ({ ...prev, patents: [...(prev.patents || []), newPatent] }));
   };
   
   const removePatent = (index: number) => {
-    const newPatents = (formData.patents || []).filter((_, i) => i !== index);
+    const newPatents = formData.patents.filter((_, i) => i !== index);
     setFormData(prev => ({ ...prev, patents: newPatents }));
   };
 
+  // === ИЗМЕНЕНИЕ 3: При отправке формы конвертируем строки дат обратно в объекты Date ===
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
      if (formData.taxSystems.length === 0) {
@@ -120,11 +155,17 @@ export const ClientForm: React.FC<ClientFormProps> = ({ client, onSave, onCancel
     }
     const processedFormData = {
         ...formData,
-        patents: formData.patents?.map(p => ({
-            ...p,
-            startDate: p.startDate ? new Date(p.startDate as string) : new Date(),
-            endDate: p.endDate ? new Date(p.endDate as string) : new Date(),
-        }))
+        patents: formData.patents.map(p => {
+            // Убеждаемся, что пустая строка не превратится в невалидную дату
+            const startDate = p.startDate ? new Date(p.startDate) : new Date(); // или другое значение по умолчанию
+            const endDate = p.endDate ? new Date(p.endDate) : new Date();
+            
+            return {
+                ...p,
+                startDate,
+                endDate,
+            };
+        })
     };
     onSave({ id: client?.id || `client-${Date.now()}`, ...processedFormData });
   };
@@ -184,7 +225,7 @@ export const ClientForm: React.FC<ClientFormProps> = ({ client, onSave, onCancel
        <div>
         <h3 className="text-lg font-medium text-slate-900 mb-2">Патенты</h3>
         <div className="space-y-3">
-          {(formData.patents || []).map((patent, index) => (
+          {formData.patents.map((patent, index) => (
             <div key={patent.id} className="grid grid-cols-12 gap-3 items-center p-3 bg-slate-50 rounded-md">
               <div className="col-span-12 sm:col-span-4">
                 <label className="text-xs text-slate-500">Название</label>
@@ -192,11 +233,25 @@ export const ClientForm: React.FC<ClientFormProps> = ({ client, onSave, onCancel
               </div>
               <div className="col-span-6 sm:col-span-3">
                 <label className="text-xs text-slate-500">Дата начала</label>
-                <input type="date" value={toInputDateString(patent.startDate)} onChange={(e) => handlePatentChange(index, 'startDate', e.target.value)} required className="w-full mt-1 px-3 py-2 bg-white border border-slate-300 rounded-md text-slate-900"/>
+                <input 
+                  type="date" 
+                  value={patent.startDate} // Просто передаем строку из состояния
+                  max={getMaxDateString()}
+                  onChange={(e) => handlePatentChange(index, 'startDate', e.target.value)} 
+                  required 
+                  className="w-full mt-1 px-3 py-2 bg-white border border-slate-300 rounded-md text-slate-900"
+                />
               </div>
               <div className="col-span-6 sm:col-span-3">
                  <label className="text-xs text-slate-500">Дата окончания</label>
-                <input type="date" value={toInputDateString(patent.endDate)} onChange={(e) => handlePatentChange(index, 'endDate', e.target.value)} required className="w-full mt-1 px-3 py-2 bg-white border border-slate-300 rounded-md text-slate-900"/>
+                <input 
+                  type="date" 
+                  value={patent.endDate} // Просто передаем строку из состояния
+                  max={getMaxDateString()}
+                  onChange={(e) => handlePatentChange(index, 'endDate', e.target.value)} 
+                  required 
+                  className="w-full mt-1 px-3 py-2 bg-white border border-slate-300 rounded-md text-slate-900"
+                />
               </div>
               <div className="col-span-10 sm:col-span-1 flex items-center justify-center pt-5">
                 <input type="checkbox" id={`autoRenew-${index}`} checked={patent.autoRenew} onChange={(e) => handlePatentChange(index, 'autoRenew', e.target.checked)} title="Автопродление" className="h-5 w-5 bg-white text-slate-900 focus:ring-slate-500 border-slate-400 rounded"/>

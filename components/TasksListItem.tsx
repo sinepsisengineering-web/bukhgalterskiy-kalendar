@@ -9,9 +9,10 @@ interface TasksListItemProps {
   onOpenDetail: (tasks: Task[]) => void;
   selectedTasks: Set<string>;
   onTaskSelect: (taskId: string, isSelected: boolean) => void;
+  onDeleteTask: (taskId: string) => void; // === ИЗМЕНЕНИЕ: Добавляем пропс onDeleteTask ===
 }
 
-export const TasksListItem: React.FC<TasksListItemProps> = ({ tasks, clients, onOpenDetail, selectedTasks, onTaskSelect }) => {
+export const TasksListItem: React.FC<TasksListItemProps> = ({ tasks, clients, onOpenDetail, selectedTasks, onTaskSelect, onDeleteTask }) => {
   if (tasks.length === 0) return null;
   
   const mainTask = tasks[0];
@@ -36,6 +37,15 @@ export const TasksListItem: React.FC<TasksListItemProps> = ({ tasks, clients, on
   };
   
   const isGroupSelected = useMemo(() => tasks.every(t => selectedTasks.has(t.id)), [tasks, selectedTasks]);
+
+  // === ИЗМЕНЕНИЕ: Добавляем обработчик для кнопки удаления ===
+  // Предотвращаем всплытие события, чтобы не открывалось модальное окно деталей
+  const handleDeleteClick = (e: React.MouseEvent) => {
+    e.stopPropagation(); 
+    // Удаляем только "главную" задачу из группы. Если это ручная задача, она удалится.
+    // Если автоматическая, пользователь увидит в деталях, что она осталась для других клиентов.
+    onDeleteTask(mainTask.id);
+  };
   
   return (
     <div className={`p-3 flex items-center gap-4 border-l-4 rounded-md transition-all ${statusStyle.bg} ${statusStyle.border} ${isGroupSelected ? 'ring-2 ring-indigo-500' : ''}`}>
@@ -50,7 +60,6 @@ export const TasksListItem: React.FC<TasksListItemProps> = ({ tasks, clients, on
         <div className="flex-1 cursor-pointer" onClick={() => onOpenDetail(tasks)}>
              <div className="flex items-center gap-2">
                  {isLocked && (
-                    // FIX: The `title` attribute is not a valid prop for SVG elements in React. Replaced with a nested `<title>` element for accessibility and to fix the TypeScript error.
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-slate-400 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
                         <title>Выполнение будет доступно в соответствующем отчетном периоде</title>
                         <path fillRule="evenodd" d="M10 1a4.5 4.5 0 00-4.5 4.5V9H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2h-.5V5.5A4.5 4.5 0 0010 1zm3 8V5.5a3 3 0 10-6 0V9h6z" clipRule="evenodd" />
@@ -62,8 +71,24 @@ export const TasksListItem: React.FC<TasksListItemProps> = ({ tasks, clients, on
             </div>
             {isGrouped && <p className="text-sm text-slate-600">Для {tasks.length} клиентов</p>}
         </div>
-        <div className="text-right">
-            <span className={`text-xs font-bold px-2 py-1 rounded-full ${statusStyle.text} ${statusStyle.bg.replace('-100', '-200')}`}>{overallStatus}</span>
+        <div className="flex items-center gap-4">
+            <div className="text-right">
+                <span className={`text-xs font-bold px-2 py-1 rounded-full ${statusStyle.text} ${statusStyle.bg.replace('-100', '-200')}`}>{overallStatus}</span>
+            </div>
+            {/* === ИЗМЕНЕНИЕ: Добавляем кнопку удаления === */}
+            {/* Показывать кнопку удаления только для задач, созданных вручную */}
+            {!mainTask.isAutomatic && (
+                 <button 
+                    type="button" 
+                    onClick={handleDeleteClick} 
+                    className="p-2 text-slate-400 hover:text-red-600 transition-colors"
+                    title="Удалить задачу"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 012 0v6a1 1 0 11-2 0V8z" clipRule="evenodd" />
+                    </svg>
+                </button>
+            )}
         </div>
     </div>
   );

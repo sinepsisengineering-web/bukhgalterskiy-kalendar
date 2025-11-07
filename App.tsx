@@ -197,9 +197,6 @@ const App: React.FC = () => {
         // 3. Генерируем "идеальный" список автоматических задач на основе текущих клиентов.
         const newlyGeneratedTasks = activeClients.flatMap(client => generateTasksForClient(client));
 
-        // --- ДОБАВЛЕНА СТРОКА ДЛЯ ДИАГНОСТИКИ ---
-        console.log("Сгенерированные seriesId:", newlyGeneratedTasks.map(t => t.seriesId));
-
         // 4. "Сливаем" новый список со старым, сохраняя статусы.
         const mergedAutoTasks = newlyGeneratedTasks.map(newTask => {
             const existingTask = existingAutoTasksMap.get(newTask.seriesId);
@@ -381,6 +378,31 @@ const App: React.FC = () => {
         setIsTaskModalOpen(true);
     };
 
+    const handleDeleteTask = (taskId: string) => {
+        const taskToDelete = tasks.find(t => t.id === taskId);
+        if (!taskToDelete) return;
+
+        setConfirmationProps({
+            title: 'Удалить задачу?',
+            message: <p>Вы уверены, что хотите <strong>навсегда</strong> удалить задачу "{taskToDelete.title}"? Это действие нельзя отменить.</p>,
+            onConfirm: () => {
+                setTasks(prev => prev.filter(t => t.id !== taskId));
+                
+                const updatedDetailTasks = tasksForDetailView.filter(t => t.id !== taskId);
+                setTasksForDetailView(updatedDetailTasks);
+                
+                if (updatedDetailTasks.length === 0) {
+                    setIsTaskDetailModalOpen(false);
+                }
+
+                setIsConfirmationModalOpen(false);
+            },
+            confirmButtonText: 'Удалить навсегда',
+            confirmButtonClass: 'bg-red-600 hover:bg-red-700',
+        });
+        setIsConfirmationModalOpen(true);
+    };
+
     // ======== HANDLERS - SETTINGS ========
     const handleClearData = () => {
         setConfirmationProps({
@@ -411,9 +433,9 @@ const App: React.FC = () => {
 
         switch(activeView) {
             case 'calendar':
-                return <Calendar tasks={tasks} clients={activeClients} onUpdateTaskStatus={() => {}} onAddTask={handleOpenTaskForm} onOpenDetail={handleOpenTaskDetail} />;
+                return <Calendar tasks={tasks} clients={activeClients} onUpdateTaskStatus={() => {}} onAddTask={handleOpenTaskForm} onOpenDetail={handleOpenTaskDetail} onDeleteTask={handleDeleteTask} />;
             case 'tasks':
-                return <TasksListView key={tasksViewKey} tasks={tasks} clients={activeClients} onOpenDetail={handleOpenTaskDetail} onBulkUpdate={handleBulkComplete} />;
+                return <TasksListView key={tasksViewKey} tasks={tasks} clients={activeClients} onOpenDetail={handleOpenTaskDetail} onBulkUpdate={handleBulkComplete} onDeleteTask={handleDeleteTask} />;
             case 'clients':
                 return <ClientList clients={activeClients} onSelectClient={setSelectedClient} onAddClient={() => handleOpenClientForm()} />;
             case 'archive':

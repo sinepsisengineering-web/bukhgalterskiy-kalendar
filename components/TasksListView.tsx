@@ -11,15 +11,15 @@ const toLocalDateString = (date: Date) => {
     return `${year}-${month}-${day}`;
 };
 
-// FIX: Define the props interface for the TasksListView component.
 interface TasksListViewProps {
     tasks: Task[];
     clients: Client[];
     onOpenDetail: (tasks: Task[]) => void;
     onBulkUpdate: (taskIds: string[]) => void;
+    onDeleteTask: (taskId: string) => void; // === ИЗМЕНЕНИЕ: Добавляем пропс onDeleteTask ===
 }
 
-export const TasksListView: React.FC<TasksListViewProps> = ({ tasks, clients, onOpenDetail, onBulkUpdate }) => {
+export const TasksListView: React.FC<TasksListViewProps> = ({ tasks, clients, onOpenDetail, onBulkUpdate, onDeleteTask }) => {
     // Filter State
     const [searchText, setSearchText] = useState('');
     const [selectedClients, setSelectedClients] = useState<string[]>([]);
@@ -94,34 +94,28 @@ export const TasksListView: React.FC<TasksListViewProps> = ({ tasks, clients, on
     const todayISO = toLocalDateString(new Date());
 
     const initialScrollTargetKey = useMemo(() => {
-        // 1. If today has tasks, target today.
         if (groupedTasksByDate.has(todayISO)) {
             return todayISO;
         }
         
-        // 2. Otherwise, find the last task in the current month.
-        const currentMonthPrefix = todayISO.substring(0, 7); // "YYYY-MM"
+        const currentMonthPrefix = todayISO.substring(0, 7);
         const keysInCurrentMonth = Array.from(groupedTasksByDate.keys())
-          // FIX: Explicitly type `key` as `string` to resolve TypeScript inference issue.
           .filter((key: string) => key.startsWith(currentMonthPrefix));
     
         if (keysInCurrentMonth.length > 0) {
           return keysInCurrentMonth[keysInCurrentMonth.length - 1];
         }
         
-        // 3. Fallback if current month is empty: find the first UPCOMING task.
         for (const dateKey of groupedTasksByDate.keys()) {
             if (dateKey >= todayISO) {
                 return dateKey;
             }
         }
     
-        // 4. Final fallback: If no upcoming tasks, don't scroll.
         return null;
     }, [groupedTasksByDate, todayISO]);
 
     useEffect(() => {
-        // Scroll to the calculated target on initial mount/remount
         setTimeout(() => {
             scrollTargetRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }, 100);
@@ -129,9 +123,9 @@ export const TasksListView: React.FC<TasksListViewProps> = ({ tasks, clients, on
 
     const handleSelectAll = () => {
         if (selectedTasks.size === filteredTasks.length) {
-            setSelectedTasks(new Set()); // Deselect all
+            setSelectedTasks(new Set());
         } else {
-            setSelectedTasks(new Set(filteredTasks.map(t => t.id))); // Select all filtered
+            setSelectedTasks(new Set(filteredTasks.map(t => t.id)));
         }
     };
     
@@ -255,6 +249,7 @@ export const TasksListView: React.FC<TasksListViewProps> = ({ tasks, clients, on
                                             onOpenDetail={onOpenDetail}
                                             selectedTasks={selectedTasks}
                                             onTaskSelect={handleTaskSelect}
+                                            onDeleteTask={onDeleteTask} // === ИЗМЕНЕНИЕ: Передаем пропс дальше ===
                                     />
                                 ))}
                             </div>
