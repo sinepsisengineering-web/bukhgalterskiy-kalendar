@@ -9,9 +9,8 @@
     "dev": "concurrently -k \"npm:vite\" \"npm:electron\"",
     "vite": "vite",
     "electron": "wait-on tcp:5173 && electron .",
-    "build": "npm version patch --no-git-tag-version && git add package.json && git commit --amend --no-edit && git tag v$(node -p \"require('./package.json').version\") -m \"$(git log -1 --pretty=%B)\" && git push --follow-tags && electron-builder --publish always",
-    "pack": "vite build && electron-builder",
-    "dist": "vite build && electron-builder"
+    "build": "vite build && electron-builder",
+    "publish": "electron-builder --publish always"
   },
   "dependencies": {
     "electron-log": "^5.4.3",
