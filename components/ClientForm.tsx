@@ -1,17 +1,20 @@
 // components/ClientForm.tsx
 
 import React, { useState, useEffect } from 'react';
-import { Client, LegalEntity, LegalForm, TaxSystem } from '../types';
+// <<< ИЗМЕНЕНО: Client больше не нужен >>>
+import { LegalEntity, LegalForm, TaxSystem } from '../types';
 import { LegalEntityForm } from './LegalEntityForm';
 
+// <<< ИЗМЕНЕНО: Интерфейс пропсов обновлен для работы с LegalEntity >>>
 interface ClientFormProps {
-  client: Client | null;
-  onSave: (client: Client) => void;
+  legalEntity: LegalEntity | null;
+  onSave: (entity: LegalEntity) => void;
   onCancel: () => void;
 }
 
+// <<< Эта функция остается, она идеальна для создания нового пустого юр. лица >>>
 const createNewLegalEntity = (): LegalEntity => ({
-  id: `le-${Date.now()}`,
+  id: `le-${Date.now()}-${Math.random()}`, // Добавим Math.random для большей уникальности
   name: '',
   legalForm: LegalForm.OOO,
   inn: '',
@@ -32,99 +35,56 @@ const createNewLegalEntity = (): LegalEntity => ({
   patents: [],
 });
 
-const createNewClient = (): Omit<Client, 'id'> => ({
-    name: '',
-    legalEntities: [createNewLegalEntity()],
-    isArchived: false,
-});
+// <<< УДАЛЕНО: Функция createNewClient больше не нужна >>>
 
-
-export const ClientForm: React.FC<ClientFormProps> = ({ client, onSave, onCancel }) => {
-  const [formData, setFormData] = useState(createNewClient());
+// <<< ИЗМЕНЕНО: Название компонента оставляем прежним для простоты, но логика полностью новая >>>
+export const ClientForm: React.FC<ClientFormProps> = ({ legalEntity, onSave, onCancel }) => {
+  // <<< ИЗМЕНЕНО: Состояние теперь хранит только один объект LegalEntity >>>
+  const [formData, setFormData] = useState<LegalEntity>(createNewLegalEntity());
 
   useEffect(() => {
-    if (client) {
-      setFormData({ ...createNewClient(), ...client });
+    if (legalEntity) {
+      setFormData(legalEntity);
     } else {
-      setFormData(createNewClient());
+      setFormData(createNewLegalEntity());
     }
-  }, [client]);
+  }, [legalEntity]);
 
-  const handleClientNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData(prev => ({ ...prev, name: e.target.value }));
-  };
-  
-  const handleLegalEntityChange = (index: number, updatedLegalEntity: LegalEntity) => {
-    const newLegalEntities = [...formData.legalEntities];
-    newLegalEntities[index] = updatedLegalEntity;
-    setFormData(prev => ({ ...prev, legalEntities: newLegalEntities }));
-  };
-
-  const addLegalEntity = () => {
-    setFormData(prev => ({
-        ...prev,
-        legalEntities: [...prev.legalEntities, createNewLegalEntity()]
-    }));
-  };
-
-  const removeLegalEntity = (index: number) => {
-    if (formData.legalEntities.length <= 1) {
-        alert("Должен быть как минимум один представитель (юрлицо/ИП).");
-        return;
-    }
-    const newLegalEntities = formData.legalEntities.filter((_, i) => i !== index);
-    setFormData(prev => ({ ...prev, legalEntities: newLegalEntities }));
-  };
+  // <<< УДАЛЕНО: Все старые обработчики (add, remove, handleClientNameChange) убраны >>>
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.name.trim()) {
-        alert('Пожалуйста, введите наименование клиента.');
+    // Простая валидация
+    if (!formData.name.trim() || !formData.inn.trim()) {
+        alert('Пожалуйста, введите наименование и ИНН.');
         return;
     }
-    onSave({ id: client?.id || `client-${Date.now()}`, ...formData });
+    // <<< ИЗМЕНЕНО: Вызываем onSave с одним объектом LegalEntity >>>
+    onSave({ ...formData, id: legalEntity?.id || formData.id });
   };
   
   return (
+    // <<< ИЗМЕНЕНО: Форма теперь не содержит лишних полей и логики >>>
     <form onSubmit={handleSubmit} className="space-y-6">
-       <div>
-         <label htmlFor="clientName" className="block text-xl font-medium text-slate-700">Наименование клиента</label>
-         <p className="text-sm text-slate-500 mb-2">Это общее название для группы юрлиц, например, "ИП Иванов" или "ГК Ромашка".</p>
-         <input 
-            type="text" 
-            id="clientName" 
-            name="clientName" 
-            value={formData.name} 
-            onChange={handleClientNameChange} 
-            required 
-            className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-slate-900 text-lg"
-            placeholder="Например, Группа компаний 'Вектор'"
-         />
-       </div>
+       {/* <<< УДАЛЕНО: Поле "Наименование клиента" и его описание убраны >>> */}
 
       <div className="space-y-4">
-        <h3 className="text-xl font-medium text-slate-900">Юридические лица / ИП клиента</h3>
-        {formData.legalEntities.map((le, index) => (
-            <LegalEntityForm
-                key={le.id}
-                legalEntity={le}
-                onChange={(updated) => handleLegalEntityChange(index, updated)}
-                onRemove={() => removeLegalEntity(index)}
-            />
-        ))}
+        {/* <<< УДАЛЕНО: Цикл .map() и заголовок для списка юрлиц >>> */}
+        <LegalEntityForm
+            // key больше не нужен, т.к. нет списка
+            legalEntity={formData}
+            // <<< ИЗМЕНЕНО: onChange теперь напрямую обновляет состояние formData >>>
+            onChange={(updated) => setFormData(updated)}
+            // onRemove больше не нужен
+        />
       </div>
         
-      <button 
-        type="button" 
-        onClick={addLegalEntity} 
-        className="w-full text-center px-4 py-2 border-2 border-dashed border-slate-300 text-slate-600 rounded-md hover:border-indigo-500 hover:text-indigo-600 transition-colors"
-      >
-        + Добавить еще одно юрлицо / ИП
-      </button>
+      {/* <<< УДАЛЕНО: Кнопка "Добавить еще одно юрлицо" >>> */}
 
       <div className="pt-4 flex justify-end gap-4">
           <button type="button" onClick={onCancel} className="px-4 py-2 text-sm font-semibold text-slate-700 bg-white border border-slate-300 rounded-md hover:bg-slate-50">Отмена</button>
-          <button type="submit" className="px-4 py-2 text-sm font-semibold text-white bg-indigo-600 border border-transparent rounded-md hover:bg-indigo-700">Сохранить клиента</button>
+          {/* <<< ИЗМЕНЕНО: Текст на кнопке сохранения >>> */}
+          <button type="submit" className="px-4 py-2 text-sm font-semibold text-white bg-indigo-600 border border-transparent rounded-md hover:bg-indigo-700">Сохранить</button>
       </div>
     </form>
   );

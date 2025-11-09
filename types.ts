@@ -4,9 +4,6 @@ export enum TaxSystem {
   OSNO = 'ОСНО',
   USN_DOHODY = 'УСН "Доходы"',
   USN_DOHODY_RASHODY = 'УСН "Доходы минус расходы"',
-  // PATENТ теперь не основная система, а дополнение к ИП на УСН,
-  // либо единственная, если ИП только на патенте. Логику выбора сделаем в форме.
-  // Для простоты оставим его здесь, чтобы можно было выбрать "только Патент".
   PATENT = 'Патент', 
 }
 
@@ -33,13 +30,9 @@ export interface Patent {
   autoRenew: boolean;
 }
 
-// =======================================
-// === НОВАЯ СТРУКТУРА ДАННЫХ НАЧИНАЕТСЯ ЗДЕСЬ ===
-// =======================================
-
 /**
  * LegalEntity представляет конкретное юрлицо или ИП.
- * Это то, чем раньше был "Клиент".
+ * Это основная сущность для представления клиента в приложении.
  */
 export interface LegalEntity {
   id: string;
@@ -54,29 +47,15 @@ export interface LegalEntity {
   contactPerson: string;
   phone: string;
   email: string;
-  taxSystem: TaxSystem; // Теперь одна основная система
-  isNdsPayer: boolean; // Новый флаг для НДС
-  ndsValue?: string;   // Новое поле для суммы НДС
+  taxSystem: TaxSystem;
+  isNdsPayer: boolean;
+  ndsValue?: string;
   hasEmployees: boolean;
   notes?: string;
   credentials: Credential[];
-  patents: Patent[]; // Массив патентов остается здесь
+  patents: Patent[];
+  isArchived?: boolean; // Свойство для архивации
 }
-
-/**
- * Client теперь является "папкой" или контейнером для одного или нескольких юрлиц.
- */
-export interface Client {
-  id: string;
-  name: string; // Общее имя клиента (Иванов И.И. или ГК "Ромашка")
-  legalEntities: LegalEntity[];
-  isArchived?: boolean;
-}
-
-// =======================================
-// === НОВАЯ СТРУКТУРА ДАННЫХ ЗАКАНЧИВАЕТСЯ ЗДЕСЬ ===
-// =======================================
-
 
 export enum TaskStatus {
   DueSoon = 'Скоро срок',
@@ -109,7 +88,6 @@ export enum ReminderSetting {
 
 export interface Task {
   id: string;
-  // clientIds заменено на legalEntityId для точности
   legalEntityId: string;
   title: string;
   description?: string;

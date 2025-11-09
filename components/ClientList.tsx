@@ -1,59 +1,59 @@
 // components/ClientList.tsx
 
 import React from 'react';
-import { Client } from '../types';
+// <<< ИЗМЕНЕНО: Импортируем LegalEntity вместо Client >>>
+import { LegalEntity } from '../types';
 
+// <<< ИЗМЕНЕНО: Интерфейс пропсов обновлен для работы с LegalEntity >>>
 interface ClientListProps {
-  clients: Client[];
-  onSelectClient: (client: Client) => void;
-  onAddClient: () => void;
+  legalEntities: LegalEntity[];
+  onSelectLegalEntity: (entity: LegalEntity) => void;
+  onAddLegalEntity: () => void;
 }
 
-export const ClientList: React.FC<ClientListProps> = ({ clients, onSelectClient, onAddClient }) => {
+// <<< ИЗМЕНЕНО: Компонент теперь принимает legalEntities и соответствующие обработчики >>>
+export const ClientList: React.FC<ClientListProps> = ({ legalEntities, onSelectLegalEntity, onAddLegalEntity }) => {
   return (
     <div className="bg-white p-6 rounded-lg shadow-md h-full flex flex-col">
       <div className="flex justify-between items-center mb-6">
+        {/* Заголовок оставляем "Клиенты" для простоты восприятия, но кнопка теперь добавляет юр. лицо */}
         <h2 className="text-2xl font-bold text-slate-800">Клиенты</h2>
         <button
-          onClick={onAddClient}
+          // <<< ИЗМЕНЕНО: Вызываем onAddLegalEntity >>>
+          onClick={onAddLegalEntity}
           className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors shadow"
         >
           <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
             <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
           </svg>
-          Добавить клиента
+          {/* <<< ИЗМЕНЕНО: Текст на кнопке >>> */}
+          Добавить юр. лицо
         </button>
       </div>
       
-      {clients.length === 0 ? (
+      {/* <<< ИЗМЕНЕНО: Проверяем длину массива legalEntities >>> */}
+      {legalEntities.length === 0 ? (
         <div className="text-center py-10 border-2 border-dashed border-slate-200 rounded-lg flex-1 flex items-center justify-center">
           <div>
-            <p className="text-slate-500">Список клиентов пуст.</p>
-            <p className="text-slate-500">Нажмите "Добавить клиента", чтобы начать.</p>
+            {/* <<< ИЗМЕНЕНО: Текст для пустого состояния >>> */}
+            <p className="text-slate-500">Список юридических лиц пуст.</p>
+            <p className="text-slate-500">Нажмите "Добавить юр. лицо", чтобы начать.</p>
           </div>
         </div>
       ) : (
         <div className="space-y-4 overflow-y-auto pr-2">
-          {clients.map(client => (
+          {/* <<< ИЗМЕНЕНО: Перебираем массив legalEntities >>> */}
+          {legalEntities.map(entity => (
             <div
-              key={client.id}
-              onClick={() => onSelectClient(client)}
+              key={entity.id}
+              // <<< ИЗМЕНЕНО: Передаем entity в обработчик >>>
+              onClick={() => onSelectLegalEntity(entity)}
               className="p-4 border border-slate-200 rounded-lg hover:bg-slate-50 hover:shadow-lg cursor-pointer transition-all duration-200"
             >
-              <div className="flex justify-between items-start">
-                  <div>
-                      <h3 className="font-semibold text-lg text-indigo-700">{client.name}</h3>
-                      {/* Отображаем список юрлиц клиента */}
-                      <div className="text-sm text-slate-600 mt-1">
-                        {client.legalEntities.map(le => (
-                            <p key={le.id}>- {le.legalForm} «{le.name}» (ИНН: {le.inn})</p>
-                        ))}
-                      </div>
-                  </div>
-                   {/* Отображаем количество юрлиц */}
-                  <span className="text-xs font-medium bg-slate-200 text-slate-700 px-2 py-1 rounded-full whitespace-nowrap">
-                    {client.legalEntities.length} юр.лиц
-                  </span>
+              {/* <<< ИЗМЕНЕНО: Логика отображения полностью переделана под одно юр. лицо >>> */}
+              <div>
+                <h3 className="font-semibold text-lg text-indigo-700">{`${entity.legalForm} «${entity.name}»`}</h3>
+                <p className="text-sm text-slate-600 mt-1">ИНН: {entity.inn}</p>
               </div>
             </div>
           ))}

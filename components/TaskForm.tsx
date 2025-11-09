@@ -1,22 +1,27 @@
-import React, { useState } from 'react';
-import { Task, Client, TaskDueDateRule, RepeatFrequency, ReminderSetting } from '../types';
+// components/TaskForm.tsx
 
+import React, { useState } from 'react';
+// <<< ИЗМЕНЕНО: Импортируем LegalEntity вместо Client >>>
+import { Task, LegalEntity, TaskDueDateRule, RepeatFrequency, ReminderSetting } from '../types';
+
+// <<< ИЗМЕНЕНО: Пропсы теперь принимают legalEntities >>>
 interface TaskFormProps {
-    clients: Client[];
+    legalEntities: LegalEntity[];
     onSave: (task: Omit<Task, 'id' | 'status' | 'isAutomatic' | 'seriesId'>) => void;
     onCancel: () => void;
     taskToEdit: Task | null;
     defaultDate: Date | null;
 }
 
+// <<< ИЗМЕНЕНО: Тип для состояния формы теперь использует legalEntityId >>>
 type FormData = {
     title: string;
     description: string;
-    dueDate: string; // Формат YYYY-MM-DD для <input type="date">
+    dueDate: string;
     dueTime: string;
     showTime: boolean;
     dueDateRule: TaskDueDateRule;
-    clientIds: string[];
+    legalEntityId: string; // Вместо clientIds: string[]
     repeat: RepeatFrequency;
     reminder: ReminderSetting;
 };
@@ -28,18 +33,16 @@ const toInputDateString = (date: Date): string => {
     return `${year}-${month}-${day}`;
 };
 
-// === НОВЫЙ КОД: Функция для вычисления максимальной даты ===
 const getMaxDateString = (): string => {
     const maxYear = new Date().getFullYear() + 2;
-    // Устанавливаем последний день года (31 декабря)
     return `${maxYear}-12-31`;
 };
 
 
-export const TaskForm: React.FC<TaskFormProps> = ({ clients, onSave, onCancel, taskToEdit, defaultDate }) => {
+export const TaskForm: React.FC<TaskFormProps> = ({ legalEntities, onSave, onCancel, taskToEdit, defaultDate }) => {
     
     const getInitialState = (): FormData => {
-        const initialDate = taskToEdit ? taskToEdit.dueDate : (defaultDate || new Date());
+        const initialDate = taskToEdit ? new Date(taskToEdit.dueDate) : (defaultDate || new Date());
         return {
             title: taskToEdit?.title || '',
             description: taskToEdit?.description || '',
@@ -47,19 +50,18 @@ export const TaskForm: React.FC<TaskFormProps> = ({ clients, onSave, onCancel, t
             dueTime: taskToEdit?.dueTime || '',
             showTime: !!taskToEdit?.dueTime,
             dueDateRule: taskToEdit?.dueDateRule || TaskDueDateRule.NextBusinessDay,
-            clientIds: taskToEdit?.clientIds || [],
+            // <<< ИЗМЕНЕНО: Используем legalEntityId >>>
+            legalEntityId: taskToEdit?.legalEntityId || '',
             repeat: taskToEdit?.repeat || RepeatFrequency.None,
             reminder: taskToEdit?.reminder || ReminderSetting.OneDay,
         };
     };
     
-    const [formData, setFormData] = useState<FormData>(() => getInitialState());
+    const [formData, setFormData] = useState<FormData>(getInitialState());
     const [error, setError] = useState<string | null>(null);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
-        if (error) {
-            setError(null);
-        }
+        if (error) setError(null);
 
         const { name, value, type } = e.target;
         if (type === 'checkbox') {
@@ -73,71 +75,36 @@ export const TaskForm: React.FC<TaskFormProps> = ({ clients, onSave, onCancel, t
         }
     };
 
-    const handleClientChange = (e: React.ChangeEvent<HTMLSelectElement>, index: number) => {
-        if (error) {
-            setError(null);
-        }
-        const newClientIds = [...formData.clientIds];
-        newClientIds[index] = e.target.value;
-        setFormData(prev => ({ ...prev, clientIds: newClientIds.filter(id => id) }));
-    };
-
-    const addClientSelector = () => {
-        if (formData.clientIds.length < clients.length) {
-            setFormData(prev => ({ ...prev, clientIds: [...prev.clientIds, ''] }));
-        }
-    };
-    
-    const removeClientSelector = (index: number) => {
-        setFormData(prev => ({ ...prev, clientIds: prev.clientIds.filter((_, i) => i !== index) }));
-    };
+    // <<< УДАЛЕНО: Сложные обработчики handleClientChange, addClientSelector, removeClientSelector больше не нужны >>>
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         setError(null);
 
-        const [year, month, day] = formData.dueDate.split('-').map(Number);
-        const submittedDate = new Date(year, month - 1, day);
-
-        if(!formData.title) {
+        if (!formData.title.trim()) {
             setError("Название задачи не может быть пустым.");
             return;
         }
-        
-        if(!formData.dueDate || isNaN(submittedDate.getTime())){
+
+        const [year, month, day] = formData.dueDate.split('-').map(Number);
+        if (!formData.dueDate || isNaN(new Date(year, month - 1, day).getTime())) {
             setError("Укажите корректную дату выполнения.");
             return;
         }
-
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        if (submittedDate < today) {
-            setError("Нельзя создавать задачи задним числом.");
-            return;
-        }
-
-        const currentYear = new Date().getFullYear();
-        const minYear = currentYear - 2;
-        const maxYear = currentYear + 2;
-        if (year < minYear || year > maxYear) {
-            setError(`Год должен быть в диапазоне от ${minYear} до ${maxYear}.`);
-            return;
-        }
-
+        
+        // <<< ИЗМЕНЕНО: onSave теперь передает один legalEntityId >>>
         onSave({
             title: formData.title,
             description: formData.description,
-            dueDate: submittedDate,
+            dueDate: new Date(year, month - 1, day),
             dueTime: formData.showTime ? formData.dueTime : undefined,
             dueDateRule: formData.dueDateRule,
-            clientIds: formData.clientIds,
+            legalEntityId: formData.legalEntityId,
             repeat: formData.repeat,
             reminder: formData.reminder,
         });
     };
     
-    const availableClients = clients.filter(c => !formData.clientIds.includes(c.id));
-
     return (
         <form onSubmit={handleSubmit} className="space-y-6">
             {error && (
@@ -159,17 +126,7 @@ export const TaskForm: React.FC<TaskFormProps> = ({ clients, onSave, onCancel, t
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                 <div>
                      <label htmlFor="dueDate" className="block text-sm font-medium text-slate-700">Дата выполнения</label>
-                     {/* === ИЗМЕНЕННЫЙ КОД: Добавлен атрибут max === */}
-                     <input
-                        type="date"
-                        name="dueDate"
-                        id="dueDate"
-                        value={formData.dueDate}
-                        min={toInputDateString(new Date())}
-                        max={getMaxDateString()}
-                        onChange={handleChange}
-                        className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md shadow-sm text-slate-900"
-                    />
+                     <input type="date" name="dueDate" id="dueDate" value={formData.dueDate} min={toInputDateString(new Date())} max={getMaxDateString()} onChange={handleChange} className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md shadow-sm text-slate-900" />
                 </div>
                  <div>
                     <label htmlFor="dueDateRule" className="block text-sm font-medium text-slate-700">Правило переноса</label>
@@ -188,36 +145,20 @@ export const TaskForm: React.FC<TaskFormProps> = ({ clients, onSave, onCancel, t
                     <input type="time" name="dueTime" value={formData.dueTime} onChange={handleChange} className="ml-4 px-3 py-1 bg-white border border-slate-300 rounded-md shadow-sm text-slate-900" />
                 )}
             </div>
+
+            {/* <<< ИЗМЕНЕНО: Весь блок выбора клиента заменен на один простой select >>> */}
             <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Клиенты</label>
-                <div className="space-y-2">
-                    {formData.clientIds.map((clientId, index) => (
-                        <div key={index} className="flex items-center gap-2">
-                            <select value={clientId} onChange={(e) => handleClientChange(e, index)} className="flex-1 block w-full pl-3 pr-10 py-2 text-base bg-white border border-slate-300 rounded-md text-slate-900">
-                                <option value="">- Выберите клиента -</option>
-                                {clientId && !clients.find(c => c.id === clientId) && <option value={clientId} disabled>{`Клиент (ID: ${clientId})`}</option>}
-                                {clients.map(c => (
-                                    <option key={c.id} value={c.id} disabled={formData.clientIds.includes(c.id) && c.id !== clientId}>{c.name}</option>
-                                ))}
-                            </select>
-                            <button type="button" onClick={() => removeClientSelector(index)} className="p-2 text-red-500 hover:text-red-700">
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                                    <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 012 0v6a1 1 0 11-2 0V8z" clipRule="evenodd" />
-                                </svg>
-                            </button>
-                        </div>
+                <label htmlFor="legalEntityId" className="block text-sm font-medium text-slate-700">Клиент</label>
+                <select name="legalEntityId" id="legalEntityId" value={formData.legalEntityId} onChange={handleChange} className="mt-1 block w-full pl-3 pr-10 py-2 text-base bg-white border border-slate-300 rounded-md text-slate-900">
+                    <option value="">- Выберите юр. лицо -</option>
+                    {legalEntities.map(entity => (
+                        <option key={entity.id} value={entity.id}>
+                            {`${entity.legalForm} «${entity.name}» (ИНН: ${entity.inn})`}
+                        </option>
                     ))}
-                    {formData.clientIds.length === 0 && (
-                         <select onChange={(e) => handleClientChange(e, 0)} className="flex-1 block w-full pl-3 pr-10 py-2 text-base bg-white border border-slate-300 rounded-md text-slate-900">
-                             <option value="">- Без клиента -</option>
-                             {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                         </select>
-                    )}
-                </div>
-                {availableClients.length > 0 && formData.clientIds.length > 0 && (
-                    <button type="button" onClick={addClientSelector} className="mt-2 text-sm font-semibold text-indigo-600 hover:text-indigo-800">+ Добавить клиента</button>
-                )}
+                </select>
             </div>
+            
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                 <div>
                     <label htmlFor="repeat" className="block text-sm font-medium text-slate-700">Повторение</label>
@@ -240,11 +181,11 @@ export const TaskForm: React.FC<TaskFormProps> = ({ clients, onSave, onCancel, t
                     </select>
                 </div>
             </div>
+
             <div className="pt-4 flex justify-end gap-4">
                 <button type="button" onClick={onCancel} className="px-4 py-2 text-sm font-semibold text-slate-700 bg-white border border-slate-300 rounded-md hover:bg-slate-50">Отмена</button>
                 <button type="submit" className="px-4 py-2 text-sm font-semibold text-white bg-indigo-600 border border-transparent rounded-md hover:bg-indigo-700">Сохранить</button>
             </div>
-
         </form>
     );
 };

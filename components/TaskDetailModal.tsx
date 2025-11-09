@@ -2,48 +2,39 @@
 
 import React, { useMemo } from 'react';
 import { Modal } from './Modal';
-import { Client, Task, TaskStatus } from '../types';
+// <<< ИЗМЕНЕНО: Импортируем LegalEntity вместо Client >>>
+import { LegalEntity, Task, TaskStatus } from '../types';
 import { TASK_STATUS_STYLES } from '../constants';
-import { isTaskLocked } from '../services/taskGenerator'; // <<<===== ШАГ 1: ИМПОРТИРУЕМ ЛОГИКУ
+import { isTaskLocked } from '../services/taskGenerator';
 
+// <<< ИЗМЕНЕНО: Пропсы обновлены >>>
 interface TaskDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
   tasks: Task[];
-  clients: Client[];
+  legalEntities: LegalEntity[];
   onToggleComplete: (taskId: string, currentStatus: TaskStatus) => void;
   onEdit: (task: Task) => void;
   onDelete: (taskId: string) => void;
-  onSelectClient: (client: Client) => void;
+  onSelectLegalEntity: (entity: LegalEntity) => void;
 }
 
 export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
   isOpen,
   onClose,
   tasks,
-  clients,
+  legalEntities,
   onToggleComplete,
   onEdit,
   onDelete,
-  onSelectClient,
+  onSelectLegalEntity,
 }) => {
   if (!isOpen || tasks.length === 0) return null;
 
+  // <<< ИЗМЕНЕНО: Карта стала проще >>>
   const legalEntityMap = useMemo(() => {
-    const map = new Map<string, { legalEntityName: string, clientName: string, clientId: string }>();
-    clients.forEach(client => {
-      if (client.legalEntities) {
-        client.legalEntities.forEach(le => {
-          map.set(le.id, { 
-              legalEntityName: le.name, 
-              clientName: client.name, 
-              clientId: client.id 
-          });
-        });
-      }
-    });
-    return map;
-  }, [clients]);
+    return new Map(legalEntities.map(le => [le.id, le]));
+  }, [legalEntities]);
 
   const mainTask = tasks[0];
   const isGrouped = tasks.length > 1;
@@ -52,13 +43,12 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
     <Modal isOpen={isOpen} onClose={onClose} title={isGrouped ? `Задачи на ${new Date(mainTask.dueDate).toLocaleDateString('ru-RU')}` : mainTask.title}>
       <div className="p-4 space-y-4">
         {tasks.map(task => {
-          const entityInfo = legalEntityMap.get(task.legalEntityId);
-          const clientDisplayName = entityInfo ? `${entityInfo.clientName} (${entityInfo.legalEntityName})` : 'Клиент не найден';
-          const clientObject = clients.find(c => c.id === entityInfo?.clientId);
+          // <<< ИЗМЕНЕНО: Логика получения юр. лица и его имени >>>
+          const legalEntity = legalEntityMap.get(task.legalEntityId);
+          const clientDisplayName = legalEntity ? `${legalEntity.legalForm} «${legalEntity.name}»` : 'Юр. лицо не найдено';
+          
           const statusStyle = TASK_STATUS_STYLES[task.status];
           const isCompleted = task.status === TaskStatus.Completed;
-          
-          // <<<===== ШАГ 2: ПРОВЕРЯЕМ БЛОКИРОВКУ ДЛЯ КАЖДОЙ ЗАДАЧИ
           const locked = isTaskLocked(task);
 
           return (
@@ -66,9 +56,10 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
               <div className="flex justify-between items-start">
                 <div>
                   {isGrouped && <p className={`font-semibold ${statusStyle.text}`}>{task.title}</p>}
+                  {/* <<< ИЗМЕНЕНО: Обработчик клика теперь работает с legalEntity >>> */}
                   <p 
                     className="text-sm text-slate-600 hover:text-indigo-600 cursor-pointer"
-                    onClick={() => clientObject && onSelectClient(clientObject)}
+                    onClick={() => legalEntity && onSelectLegalEntity(legalEntity)}
                   >
                     {clientDisplayName}
                   </p>
@@ -83,10 +74,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
               <div className="mt-3 pt-3 border-t border-slate-200 flex justify-between items-center">
                  <div>
                     {!task.isAutomatic && (
-                        <button 
-                            onClick={() => onDelete(task.id)} 
-                            className="p-1 text-sm font-semibold text-red-600 hover:text-red-800"
-                        >
+                        <button onClick={() => onDelete(task.id)} className="p-1 text-sm font-semibold text-red-600 hover:text-red-800">
                             Удалить
                         </button>
                     )}
@@ -97,10 +85,9 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                             Редактировать
                         </button>
                      )}
-                     {/* <<<===== ШАГ 3: ОБНОВЛЯЕМ КНОПКУ, ДОБАВЛЯЕМ DISABLED И TITLE =====>>> */}
                      <button 
                         onClick={() => onToggleComplete(task.id, task.status)}
-                        disabled={locked && !isCompleted} // Блокируем, только если задача locked И не выполнена
+                        disabled={locked && !isCompleted}
                         title={locked && !isCompleted ? 'Эту задачу нельзя выполнить до начала отчетного периода' : ''}
                         className={`px-3 py-1 text-sm font-semibold rounded-md transition-colors
                           ${isCompleted 
