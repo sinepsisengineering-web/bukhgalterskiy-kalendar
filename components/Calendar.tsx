@@ -27,7 +27,7 @@ interface CalendarProps {
   onUpdateTaskStatus: (taskId: string, status: TaskStatus) => void;
   onAddTask: (date: Date) => void;
   onOpenDetail: (tasks: Task[]) => void;
-  onDeleteTask: (taskId: string) => void; // === ИЗМЕНЕНИЕ: Добавляем пропс onDeleteTask ===
+  onDeleteTask: (taskId: string) => void;
 }
 
 type CalendarView = 'day' | 'week' | 'month' | 'quarter' | 'year';
@@ -41,7 +41,6 @@ const AddTaskButton: React.FC<{onClick?: () => void}> = ({onClick}) => (
     </button>
 );
 
-// === ИЗМЕНЕНИЕ: DayViewProps теперь включает onDeleteTask ===
 interface DayViewProps {
     tasks: Task[];
     clients: Client[];
@@ -51,38 +50,44 @@ interface DayViewProps {
     onDeleteTask: (taskId: string) => void;
 }
 
-const DayView: React.FC<DayViewProps> = ({ tasks, clients, currentDate, onAddTask, onOpenDetail, onDeleteTask }) => {
-  const tasksForDay = useMemo(() => tasks.filter(t => t.dueDate.toDateString() === currentDate.toDateString()), [tasks, currentDate]);
-  
-  const groupedTasks = useMemo(() => {
-    const groups = new Map<string, Task[]>();
-    tasksForDay.forEach(task => {
-        const key = task.title; // Group by title for the same day
-        if (!groups.has(key)) {
-            groups.set(key, []);
-        }
-        groups.get(key)!.push(task);
-    });
-    return Array.from(groups.values());
-  }, [tasksForDay]);
+// === НАЧАЛО ИСПРАВЛЕННОГО БЛОКА DAYVIEW ===
+const DayView: React.FC<DayViewProps> = ({ tasks, clients, currentDate, onAddTask, onOpenDetail }) => {
+  const tasksForDay = useMemo(() => tasks.filter(t => new Date(t.dueDate).toDateString() === currentDate.toDateString()), [tasks, currentDate]);
+
+  const getClientNameForTask = (task: Task): string => {
+    for (const client of clients) {
+      if (client.legalEntities.some(le => le.id === task.legalEntityId)) {
+        return client.name;
+      }
+    }
+    return 'Клиент не найден';
+  };
 
   return (
     <div>
       <div className="flex justify-between items-center mb-4">
         <h3 className="text-lg font-semibold text-slate-700 capitalize">
-            {currentDate.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' })}
+          {currentDate.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' })}
         </h3>
         <AddTaskButton onClick={() => onAddTask(currentDate)} />
       </div>
       <div className="space-y-3 max-h-[65vh] overflow-y-auto pr-2">
-        {/* === ИЗМЕНЕНИЕ: Передаем onDeleteTask в TaskItem === */}
-        {groupedTasks.length > 0 ? groupedTasks.map(group => (
-            <TaskItem key={group[0].seriesId || group[0].id} tasks={group} clients={clients} onOpenDetail={onOpenDetail} onDeleteTask={onDeleteTask} />
+        {tasksForDay.length > 0 ? tasksForDay.map(task => (
+          <TaskItem
+            key={task.id}
+            task={task}
+            clientName={getClientNameForTask(task)}
+            onOpenDetail={() => onOpenDetail([task])} // Передаем задачу в виде массива из одного элемента
+            isSelected={false} // Заглушка, т.к. в этом виде нет выбора
+            onTaskSelect={() => {}} // Пустая функция-заглушка
+          />
         )) : <p className="text-center text-slate-500 py-8">На этот день задач нет.</p>}
       </div>
     </div>
   );
 };
+// === КОНЕЦ ИСПРАВЛЕННОГО БЛОКА DAYVIEW ===
+
 
 const WeekView: React.FC<{ tasks: Task[]; clients: Client[]; currentDate: Date; onSelectDate: (date: Date) => void; onAddTask: (date: Date) => void; onOpenDetail: (tasks: Task[]) => void; }> = ({ tasks, clients, currentDate, onSelectDate, onAddTask, onOpenDetail }) => {
     const today = new Date(); today.setHours(0,0,0,0);
@@ -101,7 +106,7 @@ const WeekView: React.FC<{ tasks: Task[]; clients: Client[]; currentDate: Date; 
         <div>
             <div className="grid grid-cols-7 gap-px bg-slate-200 border border-slate-200 rounded-lg overflow-hidden">
                 {weekDays.map(day => {
-                    const tasksForDay = tasks.filter(t => t.dueDate.toDateString() === day.toDateString());
+                    const tasksForDay = tasks.filter(t => new Date(t.dueDate).toDateString() === day.toDateString());
                     
                     return (
                         <div key={day.toISOString()} className="flex flex-col bg-white group relative">
@@ -151,7 +156,7 @@ const MonthView: React.FC<{ tasks: Task[]; clients: Client[]; currentDate: Date;
                 const isWknd = isWeekend(d);
                 const isHol = isHoliday(d);
                 
-                const tasksForDay = tasks.filter(t => t.dueDate.toDateString() === d.toDateString());
+                const tasksForDay = tasks.filter(t => new Date(t.dueDate).toDateString() === d.toDateString());
                 const groupedTasks = new Map<string, Task[]>();
                 tasksForDay.forEach(task => {
                     const key = task.title;
@@ -232,7 +237,7 @@ const MiniMonthGrid: React.FC<{ year: number; month: number; tasks: Task[]; onSe
                     const isCurrentMonth = d.getMonth() === month;
                     const isWknd = isWeekend(d);
                     const isHol = isHoliday(d);
-                    const tasksForDay = isCurrentMonth ? tasks.filter(t => t.dueDate.toDateString() === d.toDateString()) : [];
+                    const tasksForDay = isCurrentMonth ? tasks.filter(t => new Date(t.dueDate).toDateString() === d.toDateString()) : [];
                     const statuses = [...new Set(tasksForDay.map(t => t.status))];
                     return (
                         <div key={i} onClick={() => isCurrentMonth && onSelectDate(d)} className={`p-1 text-center cursor-pointer rounded-md relative group ${!isCurrentMonth ? 'bg-slate-50' : ''} ${isCurrentMonth && (isWknd || isHol) ? 'bg-red-50' : ''} ${isCurrentMonth ? 'hover:bg-indigo-100' : ''}`}>
@@ -369,7 +374,6 @@ export const Calendar: React.FC<CalendarProps> = ({ tasks, clients, onUpdateTask
         </div>
       </div>
       
-      {/* === ИЗМЕНЕНИЕ: Передаем onDeleteTask в DayView === */}
       {view === 'day' && <DayView tasks={tasks} clients={clients} currentDate={currentDate} onAddTask={onAddTask} onOpenDetail={onOpenDetail} onDeleteTask={onDeleteTask} />}
       {view === 'week' && <WeekView tasks={tasks} clients={clients} currentDate={currentDate} onSelectDate={handleSelectDate} onAddTask={onAddTask} onOpenDetail={onOpenDetail} />}
       {view === 'month' && <MonthView tasks={tasks} clients={clients} currentDate={currentDate} onSelectDate={handleSelectDate} onAddTask={onAddTask} onOpenDetail={onOpenDetail} />}

@@ -3,30 +3,37 @@
 import React from 'react';
 import { Task, TaskStatus } from '../types';
 import { TASK_STATUS_STYLES } from '../constants';
+import { isTaskLocked } from '../services/taskGenerator';
 
 interface TaskItemProps {
   task: Task;
   clientName: string;
-  isSelected: boolean; // Новый пропс: выбрана ли задача
-  onTaskSelect: (taskId: string, isSelected: boolean) => void; // Новый пропс: обработчик выбора
-  onOpenDetail: (task: Task) => void;
+  isSelected: boolean;
+  onTaskSelect: (taskId: string, isSelected: boolean) => void;
+  onOpenDetail: (task: Task) => void; // Изменено на (task: Task) для единообразия
 }
 
 export const TaskItem: React.FC<TaskItemProps> = ({ task, clientName, isSelected, onTaskSelect, onOpenDetail }) => {
+  if (!task) {
+    return null;
+  }
+
+  const locked = isTaskLocked(task);
   const statusStyle = TASK_STATUS_STYLES[task.status];
 
   const handleSelectToggle = (e: React.ChangeEvent<HTMLInputElement>) => {
-    // Эта функция теперь ТОЛЬКО для чекбокса
-    e.stopPropagation(); // ВАЖНО: останавливаем всплытие события
+    e.stopPropagation();
+    // <<<===== ВОТ ГЛАВНОЕ ИСПРАВЛЕНИЕ: Добавляем логическую проверку!
+    if (locked || task.status === TaskStatus.Completed) return;
+    
     onTaskSelect(task.id, e.target.checked);
   };
   
   const isCompleted = task.status === TaskStatus.Completed;
 
   return (
-    // Клик на div теперь открывает детали
     <div
-      onClick={() => onOpenDetail(task)}
+      onClick={() => onOpenDetail(task)} // Передаем одну задачу
       className={`p-3 flex items-center justify-between gap-4 border-l-4 rounded cursor-pointer transition-shadow hover:shadow-md ${statusStyle.bg} ${statusStyle.border}`}
     >
       <div className="flex items-center gap-4">
@@ -34,8 +41,9 @@ export const TaskItem: React.FC<TaskItemProps> = ({ task, clientName, isSelected
           type="checkbox"
           checked={isSelected}
           onChange={handleSelectToggle}
-          onClick={(e) => e.stopPropagation()} // Дополнительная защита для некоторых браузеров
-          className="h-5 w-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 flex-shrink-0"
+          onClick={(e) => e.stopPropagation()}
+          disabled={locked || isCompleted}
+          className="h-5 w-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
         />
         <div className="flex-1">
           <p className={`font-semibold ${statusStyle.text} ${isCompleted ? 'line-through text-slate-500' : ''}`}>

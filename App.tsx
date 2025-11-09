@@ -1,6 +1,6 @@
 // App.tsx
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { Calendar } from './components/Calendar';
 import { ClientList } from './components/ClientList';
@@ -13,10 +13,10 @@ import { ConfirmationModal } from './components/ConfirmationModal';
 import { TasksListView } from './components/TasksListView';
 import { ArchiveView } from './components/ArchiveView';
 import { SettingsView } from './components/SettingsView';
-import { Client, LegalEntity, Task, TaskStatus, ReminderSetting } from './types';
-import { generateAllTasks, updateTaskStatuses, getTaskStatus } from './services/taskGenerator';
+import { Client, LegalEntity } from './types';
 import { DUMMY_CLIENTS } from './dummy-data';
 import { ClientEditForm } from './components/ClientEditForm';
+import { useTasks } from './hooks/useTasks'; // <<<===== ИМПОРТИРУЕМ НАШ НОВЫЙ ХУК
 
 type View = 'calendar' | 'tasks' | 'clients' | 'archive' | 'settings';
 
@@ -28,10 +28,8 @@ interface ConfirmationProps {
     confirmButtonClass?: string;
 }
 
-const notificationSound = new Audio('data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=');
-
 const App: React.FC = () => {
-    // ======== STATE MANAGEMENT ========
+    // ======== STATE MANAGEMENT - CLIENTS ========
     const [clients, setClients] = useState<Client[]>(() => {
         try {
             const savedClients = localStorage.getItem('clients');
@@ -53,44 +51,20 @@ const App: React.FC = () => {
         }
     });
 
-    const [tasks, setTasks] = useState<Task[]>(() => {
-        try {
-            const savedTasks = localStorage.getItem('tasks');
-            if (savedTasks) {
-                const parsedTasks = JSON.parse(savedTasks);
-                return parsedTasks.map((t: Task) => ({...t, dueDate: new Date(t.dueDate)}));
-            }
-            return [];
-        } catch (error) {
-            console.error("Failed to load tasks from localStorage", error);
-            return [];
-        }
-    });
-
     const [activeView, setActiveView] = useState<View>('calendar');
     const [selectedClient, setSelectedClient] = useState<Client | null>(null);
     const [tasksViewKey, setTasksViewKey] = useState(0);
-    const [notifiedTaskIds, setNotifiedTaskIds] = useState(new Set<string>());
     
-    // Modal States
-    const [isClientModalOpen, setIsClientModalOpen] = useState(false); // Для создания/полного редактирования
-    const [isClientEditModalOpen, setIsClientEditModalOpen] = useState(false); // Для редактирования имени
+    // Modal States - Clients
+    const [isClientModalOpen, setIsClientModalOpen] = useState(false);
+    const [isClientEditModalOpen, setIsClientEditModalOpen] = useState(false);
     const [clientToEdit, setClientToEdit] = useState<Client | null>(null);
-    const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
-    const [taskToEdit, setTaskToEdit] = useState<Task | null>(null);
-    const [taskModalDefaultDate, setTaskModalDefaultDate] = useState<Date | null>(null);
-    const [isTaskDetailModalOpen, setIsTaskDetailModalOpen] = useState(false);
-    const [tasksForDetailView, setTasksForDetailView] = useState<Task[]>([]);
-    const [isConfirmationModalOpen, setIsConfirmationModalOpen] = useState(false);
     
+    // Confirmation Modal
+    const [isConfirmationModalOpen, setIsConfirmationModalOpen] = useState(false);
     const [confirmationProps, setConfirmationProps] = useState<ConfirmationProps>({
-        title: '',
-        message: '',
-        onConfirm: () => {},
-        confirmButtonText: 'Confirm',
-        confirmButtonClass: 'bg-indigo-600',
+        title: '', message: '', onConfirm: () => {},
     });
-
 
     // ======== DATA DERIVATION ========
     const { activeClients, archivedClients } = useMemo(() => {
@@ -103,64 +77,37 @@ const App: React.FC = () => {
     const legalEntityMap = useMemo(() => {
         const map = new Map<string, { legalEntity: LegalEntity, clientName: string, clientId: string }>();
         clients.forEach(client => {
-            if (client.legalEntities) {
-                client.legalEntities.forEach(le => {
-                    map.set(le.id, { legalEntity: le, clientName: client.name, clientId: client.id });
-                });
-            }
+            client.legalEntities?.forEach(le => {
+                map.set(le.id, { legalEntity: le, clientName: client.name, clientId: client.id });
+            });
         });
         return map;
     }, [clients]);
-
+    
+    // <<<===== ВСЯ ЛОГИКА ЗАДАЧ ТЕПЕРЬ ЗДЕСЬ =====>>>
+    const {
+        tasks,
+        isTaskModalOpen,
+        setIsTaskModalOpen,
+        taskToEdit,
+        setTaskToEdit,
+        taskModalDefaultDate,
+        isTaskDetailModalOpen,
+        setIsTaskDetailModalOpen,
+        tasksForDetailView,
+        handleSaveTask,
+        handleOpenTaskForm,
+        handleOpenTaskDetail,
+        handleToggleComplete,
+        handleEditTaskFromDetail,
+        handleDeleteTask,
+        handleBulkComplete,
+    } = useTasks(activeClients, legalEntityMap);
+    // <<<=======================================>>>
 
     // ======== EFFECTS ========
     useEffect(() => { localStorage.setItem('clients', JSON.stringify(clients)); }, [clients]);
-    useEffect(() => { localStorage.setItem('tasks', JSON.stringify(tasks)); }, [tasks]);
-
-    useEffect(() => {
-        const currentManualTasks = tasks.filter(t => !t.isAutomatic);
-        const currentAutoTasks = tasks.filter(t => t.isAutomatic);
-        const existingAutoTasksMap = new Map(currentAutoTasks.map(t => [t.seriesId, t]));
-        const newlyGeneratedTasks = generateAllTasks(activeClients);
-        const mergedAutoTasks = newlyGeneratedTasks.map(newTask => {
-            const existingTask = existingAutoTasksMap.get(newTask.seriesId);
-            return existingTask ? { ...newTask, status: existingTask.status } : newTask;
-        });
-        const allTasks = [...mergedAutoTasks, ...currentManualTasks];
-        setTasks(updateTaskStatuses(allTasks));
-    }, [activeClients]); // eslint-disable-line react-hooks/exhaustive-deps
     
-    useEffect(() => {
-        const interval = setInterval(() => {
-            if (Notification.permission !== 'granted') return;
-            const now = new Date();
-            const isSoundEnabled = localStorage.getItem('soundEnabled') === 'true';
-            tasks.forEach(task => {
-                if (task.status === TaskStatus.Completed || notifiedTaskIds.has(task.id) || task.reminder === ReminderSetting.None) return;
-                const dueDate = new Date(task.dueDate);
-                const timeDiff = dueDate.getTime() - now.getTime();
-                let reminderMillis = 0;
-                switch (task.reminder) {
-                    case ReminderSetting.OneHour: reminderMillis = 60 * 60 * 1000; break;
-                    case ReminderSetting.OneDay: reminderMillis = 24 * 60 * 60 * 1000; break;
-                    case ReminderSetting.OneWeek: reminderMillis = 7 * 24 * 60 * 60 * 1000; break;
-                }
-                if (timeDiff > 0 && timeDiff <= reminderMillis) {
-                    const entityInfo = legalEntityMap.get(task.legalEntityId);
-                    const clientName = entityInfo ? `${entityInfo.clientName} (${entityInfo.legalEntity.name})` : 'Неизвестный клиент';
-                    new Notification('Напоминание о задаче', {
-                        body: `${task.title}\nСрок до: ${dueDate.toLocaleDateString('ru-RU')}\nКлиент: ${clientName}`,
-                    });
-                    if (isSoundEnabled) notificationSound.play().catch(e => console.error("Audio playback failed", e));
-                    setNotifiedTaskIds(prev => new Set(prev).add(task.id));
-                }
-            });
-        }, 60 * 1000);
-        return () => clearInterval(interval);
-    }, [tasks, legalEntityMap, notifiedTaskIds]);
-
-   
-
     // ======== HANDLERS - CLIENTS ========
     const handleSaveClient = (clientData: Client) => {
         const updatedClients = clients.find(c => c.id === clientData.id)
@@ -198,36 +145,6 @@ const App: React.FC = () => {
         setClientToEdit(client);
         setIsClientEditModalOpen(true);
     };
-
-    // ======== HANDLERS - TASKS ========
-    const handleSaveTask = (taskData: Omit<Task, 'id' | 'status' | 'isAutomatic' | 'seriesId'>) => { /* ... */ };
-    const handleOpenTaskForm = useCallback((date: Date) => { /* ... */ }, []);
-    const handleOpenTaskDetail = useCallback((tasksForDetail: Task[]) => { /* ... */ }, []);
-
-    const handleToggleComplete = useCallback((taskId: string, currentStatus: TaskStatus) => {
-        setTasks(prevTasks => {
-            const newTasks = prevTasks.map(task => {
-                if (task.id === taskId) {
-                    if (currentStatus === TaskStatus.Completed) {
-                        const recalculatedTask = { ...task, status: TaskStatus.InProgress };
-                        return { ...recalculatedTask, status: getTaskStatus(recalculatedTask.dueDate) };
-                    }
-                    return { ...task, status: TaskStatus.Completed };
-                }
-                return task;
-            });
-            const updatedDetailTasks = tasksForDetailView.map(t => newTasks.find(nt => nt.id === t.id) || t);
-            setTasksForDetailView(updatedDetailTasks);
-            if (updatedDetailTasks.every(t => t.status === TaskStatus.Completed)) {
-                setTimeout(() => setIsTaskDetailModalOpen(false), 500);
-            }
-            return newTasks;
-        });
-    }, [tasksForDetailView]);
-
-    const handleBulkComplete = useCallback((taskIds: string[]) => { /* ... */ }, []);
-    const handleEditTaskFromDetail = (task: Task) => { /* ... */ };
-    const handleDeleteTask = (taskId: string) => { /* ... */ };
 
     // ======== HANDLERS - SETTINGS ========
     const handleClearData = () => { /* ... */ };
@@ -267,13 +184,14 @@ const App: React.FC = () => {
                 <ClientForm client={clientToEdit} onSave={handleSaveClient} onCancel={() => { setIsClientModalOpen(false); setClientToEdit(null); }} />
             </Modal>
             
-            {/* НОВОЕ: Модальное окно для РЕДАКТИРОВАНИЯ ИМЕНИ КЛИЕНТА */}
+            {/* Модальное окно для РЕДАКТИРОВАНИЯ ИМЕНИ КЛИЕНТА */}
             {clientToEdit && (
                 <Modal isOpen={isClientEditModalOpen} onClose={() => { setIsClientEditModalOpen(false); setClientToEdit(null); }} title={`Редактирование: ${clientToEdit.name}`}>
                     <ClientEditForm client={clientToEdit} onSave={handleSaveClientName} onCancel={() => { setIsClientEditModalOpen(false); setClientToEdit(null); }} />
                 </Modal>
             )}
 
+            {/* Модальные окна для задач (теперь управляются из хука) */}
             <Modal isOpen={isTaskModalOpen} onClose={() => setIsTaskModalOpen(false)} title={taskToEdit ? 'Редактировать задачу' : 'Новая задача'}>
                 <TaskForm clients={activeClients} onSave={handleSaveTask} onCancel={() => { setIsTaskModalOpen(false); setTaskToEdit(null); }} taskToEdit={taskToEdit} defaultDate={taskModalDefaultDate}/>
             </Modal>
