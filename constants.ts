@@ -1,13 +1,6 @@
 
 import { TaxSystem, TaskStatus } from './types';
 
-export const TAX_SYSTEMS: TaxSystem[] = [
-  TaxSystem.OSNO,
-  TaxSystem.USN_DOHODY,
-  TaxSystem.USN_DOHODY_RASHODY,
-  TaxSystem.PATENT,
-  TaxSystem.NPD,
-];
 
 export const TASK_STATUS_STYLES: Record<TaskStatus, { bg: string; text: string; border: string }> = {
   [TaskStatus.Overdue]: { bg: 'bg-red-100', text: 'text-red-800', border: 'border-red-500' },
