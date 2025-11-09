@@ -1,9 +1,13 @@
+// types.ts
+
 export enum TaxSystem {
   OSNO = 'ОСНО',
   USN_DOHODY = 'УСН "Доходы"',
   USN_DOHODY_RASHODY = 'УСН "Доходы минус расходы"',
-  PATENT = 'Патент',
-  NPD = 'НПД',
+  // PATENТ теперь не основная система, а дополнение к ИП на УСН,
+  // либо единственная, если ИП только на патенте. Логику выбора сделаем в форме.
+  // Для простоты оставим его здесь, чтобы можно было выбрать "только Патент".
+  PATENT = 'Патент', 
 }
 
 export enum LegalForm {
@@ -12,7 +16,6 @@ export enum LegalForm {
   AO = 'АО',
   PAO = 'ПАО',
   ZAO = 'ЗАО',
-  SELF_EMPLOYED = 'Самозанятый'
 }
 
 export interface Credential {
@@ -30,10 +33,18 @@ export interface Patent {
   autoRenew: boolean;
 }
 
-export interface Client {
+// =======================================
+// === НОВАЯ СТРУКТУРА ДАННЫХ НАЧИНАЕТСЯ ЗДЕСЬ ===
+// =======================================
+
+/**
+ * LegalEntity представляет конкретное юрлицо или ИП.
+ * Это то, чем раньше был "Клиент".
+ */
+export interface LegalEntity {
   id: string;
   legalForm: LegalForm;
-  name: string;
+  name: string; // Наименование юрлица (без ООО/ИП)
   inn: string;
   kpp?: string;
   ogrn: string;
@@ -43,13 +54,29 @@ export interface Client {
   contactPerson: string;
   phone: string;
   email: string;
-  taxSystems: TaxSystem[];
+  taxSystem: TaxSystem; // Теперь одна основная система
+  isNdsPayer: boolean; // Новый флаг для НДС
+  ndsValue?: string;   // Новое поле для суммы НДС
   hasEmployees: boolean;
   notes?: string;
   credentials: Credential[];
-  patents?: Patent[];
+  patents: Patent[]; // Массив патентов остается здесь
+}
+
+/**
+ * Client теперь является "папкой" или контейнером для одного или нескольких юрлиц.
+ */
+export interface Client {
+  id: string;
+  name: string; // Общее имя клиента (Иванов И.И. или ГК "Ромашка")
+  legalEntities: LegalEntity[];
   isArchived?: boolean;
 }
+
+// =======================================
+// === НОВАЯ СТРУКТУРА ДАННЫХ ЗАКАНЧИВАЕТСЯ ЗДЕСЬ ===
+// =======================================
+
 
 export enum TaskStatus {
   DueSoon = 'Скоро срок',
@@ -80,10 +107,10 @@ export enum ReminderSetting {
     OneWeek = '1w',
 }
 
-
 export interface Task {
   id: string;
-  clientIds: string[];
+  // clientIds заменено на legalEntityId для точности
+  legalEntityId: string;
   title: string;
   description?: string;
   dueDate: Date;

@@ -5,17 +5,19 @@
     "lib": ["DOM", "DOM.Iterable", "ESNext"],
     "allowJs": false,
     "skipLibCheck": true,
-    "esModuleInterop": false,
+    "esModuleInterop": true, // ИЗМЕНЕНИЕ 1: Рекомендуется установить в true для лучшей совместимости
     "allowSyntheticDefaultImports": true,
     "strict": true,
     "forceConsistentCasingInFileNames": true,
     "module": "ESNext",
-    "moduleResolution": "bundler",
+    "moduleResolution": "node", // ИЗМЕНЕНИЕ 2: Меняем на более стабильный режим
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
     "jsx": "react-jsx"
   },
-  "include": ["."],
+  // ИЗМЕНЕНИЕ 3: Явно указываем, какие файлы включать
+  "include": ["**/*.ts", "**/*.tsx"],
+  "exclude": ["node_modules"], // Явно исключаем node_modules
   "references": [{ "path": "./tsconfig.node.json" }]
 }

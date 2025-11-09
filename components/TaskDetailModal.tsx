@@ -1,87 +1,108 @@
-import React from 'react';
-import { Task, Client, TaskStatus } from '../types';
+// components/TaskDetailModal.tsx
+
+import React, { useMemo } from 'react';
 import { Modal } from './Modal';
+import { Client, Task, TaskStatus } from '../types';
 import { TASK_STATUS_STYLES } from '../constants';
-import { isTaskCompletable } from '../services/taskGenerator';
 
 interface TaskDetailModalProps {
-    isOpen: boolean;
-    onClose: () => void;
-    tasks: Task[];
-    clients: Client[];
-    onToggleComplete: (taskId: string, currentStatus: TaskStatus) => void;
-    onEdit: (task: Task) => void;
-    onSelectClient: (client: Client) => void;
+  isOpen: boolean;
+  onClose: () => void;
+  tasks: Task[];
+  clients: Client[];
+  onToggleComplete: (taskId: string, currentStatus: TaskStatus) => void;
+  onEdit: (task: Task) => void;
+  onDelete: (taskId: string) => void;
+  onSelectClient: (client: Client) => void;
 }
 
-export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ isOpen, onClose, tasks, clients, onToggleComplete, onEdit, onSelectClient }) => {
-    if (!isOpen || tasks.length === 0) return null;
+export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
+  isOpen,
+  onClose,
+  tasks,
+  clients,
+  onToggleComplete,
+  onEdit,
+  onDelete,
+  onSelectClient,
+}) => {
+  if (!isOpen || tasks.length === 0) return null;
 
-    const mainTask = tasks[0];
-    const uncompletedTasks = tasks.filter(task => task.status !== TaskStatus.Completed);
-    const totalTaskCount = tasks.length;
+  const legalEntityMap = useMemo(() => {
+    const map = new Map<string, { legalEntityName: string, clientName: string, clientId: string }>();
+    clients.forEach(client => {
+      if (client.legalEntities) {
+        client.legalEntities.forEach(le => {
+          map.set(le.id, { 
+              legalEntityName: le.name, 
+              clientName: client.name, 
+              clientId: client.id 
+          });
+        });
+      }
+    });
+    return map;
+  }, [clients]);
 
-    return (
-        <Modal isOpen={isOpen} onClose={onClose} title="Информация о задаче">
-            <div className="space-y-6">
+  const mainTask = tasks[0];
+  const isGrouped = tasks.length > 1;
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title={isGrouped ? `Задачи на ${new Date(mainTask.dueDate).toLocaleDateString('ru-RU')}` : mainTask.title}>
+      <div className="p-4 space-y-4">
+        {tasks.map(task => {
+          const entityInfo = legalEntityMap.get(task.legalEntityId);
+          const clientDisplayName = entityInfo ? `${entityInfo.clientName} (${entityInfo.legalEntityName})` : 'Клиент не найден';
+          const clientObject = clients.find(c => c.id === entityInfo?.clientId);
+          const statusStyle = TASK_STATUS_STYLES[task.status];
+          const isCompleted = task.status === TaskStatus.Completed;
+
+          return (
+            <div key={task.id} className={`p-3 rounded-md border-l-4 ${statusStyle.bg} ${statusStyle.border}`}>
+              <div className="flex justify-between items-start">
                 <div>
-                    <h3 className="text-2xl font-bold text-slate-800">{mainTask.title}</h3>
-                    <p className="text-sm text-slate-500">
-                        Срок: {mainTask.dueDate.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}
-                    </p>
+                  {isGrouped && <p className={`font-semibold ${statusStyle.text}`}>{task.title}</p>}
+                  <p 
+                    className="text-sm text-slate-600 hover:text-indigo-600 cursor-pointer"
+                    onClick={() => clientObject && onSelectClient(clientObject)}
+                  >
+                    {clientDisplayName}
+                  </p>
                 </div>
-
-                {mainTask.description && (
-                    <div>
-                        <h4 className="font-semibold text-slate-700">Описание</h4>
-                        <p className="mt-1 text-slate-600 whitespace-pre-wrap">{mainTask.description}</p>
-                    </div>
-                )}
-                
-                <div>
-                    <h4 className="font-semibold text-slate-700 mb-2">
-                        Клиенты ({uncompletedTasks.length} из {totalTaskCount})
-                    </h4>
-                    <div className="space-y-2 max-h-60 overflow-y-auto pr-2 border-t pt-2">
-                        {uncompletedTasks.length > 0 ? uncompletedTasks.map(task => {
-                            const client = clients.find(c => c.id === task.clientIds[0]);
-                            if (!client) return null;
-
-                            const statusStyle = TASK_STATUS_STYLES[task.status];
-                            const canComplete = isTaskCompletable(task);
-
-                            return (
-                                <div key={task.id} className={`p-3 flex items-center justify-between gap-4 rounded-md ${statusStyle.bg}`}>
-                                    <div>
-                                        <button onClick={() => onSelectClient(client)} className="font-semibold text-indigo-700 hover:underline text-left">
-                                            {client.name}
-                                        </button>
-                                        <p className={`text-xs font-medium ${statusStyle.text}`}>{task.status}</p>
-                                    </div>
-                                    <button 
-                                        onClick={() => onToggleComplete(task.id, task.status)}
-                                        disabled={!canComplete}
-                                        title={!canComplete ? 'Выполнение будет доступно в соответствующем отчетном периоде' : `Выполнить для ${client.name}`}
-                                        className="px-4 py-1.5 text-sm font-semibold text-indigo-700 bg-white border border-indigo-200 rounded-lg hover:bg-indigo-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition-colors shadow-sm disabled:bg-slate-200 disabled:text-slate-500 disabled:cursor-not-allowed"
-                                        aria-label={`Выполнить для ${client.name}`}
-                                    >
-                                        Выполнить
-                                    </button>
-                                </div>
-                            );
-                        }) : (
-                            <div className="text-center py-6 text-slate-500">
-                                <p className="font-semibold text-lg text-green-600">Все задачи по клиентам выполнены!</p>
-                            </div>
-                        )}
-                    </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium">{task.status}</span>
                 </div>
+              </div>
 
-                <div className="pt-4 flex justify-end gap-4 border-t">
-                    <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-semibold text-slate-700 bg-white border border-slate-300 rounded-md hover:bg-slate-50">Закрыть</button>
-                    <button type="button" onClick={() => onEdit(mainTask)} className="px-4 py-2 text-sm font-semibold text-white bg-indigo-600 border border-transparent rounded-md hover:bg-indigo-700">Редактировать</button>
-                </div>
+              <div className="mt-3 pt-3 border-t border-slate-200 flex justify-between items-center">
+                 <div>
+                    {!task.isAutomatic && (
+                        <button 
+                            onClick={() => onDelete(task.id)} 
+                            className="p-1 text-sm font-semibold text-red-600 hover:text-red-800"
+                        >
+                            Удалить
+                        </button>
+                    )}
+                 </div>
+                 <div className="flex justify-end gap-3">
+                     {!task.isAutomatic && (
+                        <button onClick={() => onEdit(task)} className="text-sm font-semibold text-indigo-600 hover:text-indigo-800">
+                            Редактировать
+                        </button>
+                     )}
+                     <button 
+                        onClick={() => onToggleComplete(task.id, task.status)}
+                        className={`px-3 py-1 text-sm font-semibold rounded-md ${isCompleted ? 'bg-yellow-500 text-white hover:bg-yellow-600' : 'bg-green-600 text-white hover:bg-green-700'}`}
+                     >
+                        {isCompleted ? 'Вернуть в работу' : 'Выполнить'}
+                     </button>
+                 </div>
+              </div>
             </div>
-        </Modal>
-    );
+          );
+        })}
+      </div>
+    </Modal>
+  );
 };

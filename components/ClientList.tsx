@@ -1,3 +1,4 @@
+// components/ClientList.tsx
 
 import React from 'react';
 import { Client } from '../types';
@@ -10,7 +11,7 @@ interface ClientListProps {
 
 export const ClientList: React.FC<ClientListProps> = ({ clients, onSelectClient, onAddClient }) => {
   return (
-    <div className="bg-white p-6 rounded-lg shadow-md">
+    <div className="bg-white p-6 rounded-lg shadow-md h-full flex flex-col">
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-2xl font-bold text-slate-800">Клиенты</h2>
         <button
@@ -25,12 +26,14 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, onSelectClient,
       </div>
       
       {clients.length === 0 ? (
-        <div className="text-center py-10 border-2 border-dashed border-slate-200 rounded-lg">
-          <p className="text-slate-500">Список клиентов пуст.</p>
-          <p className="text-slate-500">Нажмите "Добавить клиента", чтобы начать.</p>
+        <div className="text-center py-10 border-2 border-dashed border-slate-200 rounded-lg flex-1 flex items-center justify-center">
+          <div>
+            <p className="text-slate-500">Список клиентов пуст.</p>
+            <p className="text-slate-500">Нажмите "Добавить клиента", чтобы начать.</p>
+          </div>
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-4 overflow-y-auto pr-2">
           {clients.map(client => (
             <div
               key={client.id}
@@ -39,10 +42,18 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, onSelectClient,
             >
               <div className="flex justify-between items-start">
                   <div>
-                      <h3 className="font-semibold text-lg text-indigo-700">{client.legalForm} «{client.name}»</h3>
-                      <p className="text-sm text-slate-600">ИНН: {client.inn}</p>
+                      <h3 className="font-semibold text-lg text-indigo-700">{client.name}</h3>
+                      {/* Отображаем список юрлиц клиента */}
+                      <div className="text-sm text-slate-600 mt-1">
+                        {client.legalEntities.map(le => (
+                            <p key={le.id}>- {le.legalForm} «{le.name}» (ИНН: {le.inn})</p>
+                        ))}
+                      </div>
                   </div>
-                  <span className="text-xs font-medium bg-slate-200 text-slate-700 px-2 py-1 rounded-full">{client.taxSystems.join(', ')}</span>
+                   {/* Отображаем количество юрлиц */}
+                  <span className="text-xs font-medium bg-slate-200 text-slate-700 px-2 py-1 rounded-full whitespace-nowrap">
+                    {client.legalEntities.length} юр.лиц
+                  </span>
               </div>
             </div>
           ))}
