@@ -1,120 +1,127 @@
 // services/taskGenerator.ts
 
-import { LegalEntity, Task, TaxSystem, TaskStatus, TaskDueDateRule, RepeatFrequency, ReminderSetting } from '../types';
+import { LegalEntity, Task, TaxSystem, TaskStatus, TaskDueDateRule, RepeatFrequency, ReminderSetting, LegalForm } from '../types';
+import { TASK_RULES, TaskRule } from './taskRules';
 
 // --- Утилиты для дат ---
 const RUSSIAN_HOLIDAYS = new Set<string>([
-  '2024-01-01', '2024-01-02', '2024-01-03', '2024-01-04', '2024-01-05', '2024-01-06', '2024-01-07', '2024-01-08',
-  '2024-02-23', '2024-03-08', '2024-05-01', '2024-05-09', '2024-06-12', '2024-11-04', '2024-12-31', '2025-01-01', '2025-01-02', '2025-01-03', '2025-01-04', '2025-01-05', '2025-01-06', '2025-01-07', '2025-01-08', '2025-02-23', '2025-03-08', '2025-05-01', '2025-05-09', '2025-06-12', '2025-11-04', '2026-01-01', '2026-01-02', '2026-01-03', '2026-01-04', '2026-01-05', '2026-01-06', '2026-01-07', '2026-01-08', '2026-02-23', '2026-03-08', '2026-05-01', '2026-05-09', '2026-06-12', '2026-11-04',
+  '2024-01-01', '2024-01-02', '2024-01-03', '2024-01-04', '2024-01-05', '2024-01-06', '2024-01-07', '2024-01-08', '2024-02-23', '2024-03-08', '2024-05-01', '2024-05-09', '2024-06-12', '2024-11-04', '2024-12-31',
+  '2025-01-01', '2025-01-02', '2025-01-03', '2025-01-04', '2025-01-05', '2025-01-06', '2025-01-07', '2025-01-08', '2025-02-23', '2025-03-08', '2025-05-01', '2025-05-09', '2025-06-12', '2025-11-04',
+  '2026-01-01', '2026-01-02', '2026-01-03', '2026-01-04', '2026-01-05', '2026-01-06', '2026-01-07', '2026-01-08', '2026-02-23', '2026-03-08', '2026-05-01', '2026-05-09', '2026-06-12', '2026-11-04',
 ]);
 const toISODateString = (date: Date) => date.toISOString().split('T')[0];
 const isWeekend = (date: Date) => { const day = date.getDay(); return day === 6 || day === 0; };
 const isHoliday = (date: Date) => RUSSIAN_HOLIDAYS.has(toISODateString(date));
 const getNextBusinessDay = (date: Date): Date => { let nextDay = new Date(date); while (isWeekend(nextDay) || isHoliday(nextDay)) { nextDay.setDate(nextDay.getDate() + 1); } return nextDay; };
 const getPreviousBusinessDay = (date: Date): Date => { let prevDay = new Date(date); while (isWeekend(prevDay) || isHoliday(prevDay)) { prevDay.setDate(prevDay.getDate() - 1); } return prevDay; };
-export const adjustDate = (date: Date, rule: TaskDueDateRule): Date => { switch (rule) { case TaskDueDateRule.NextBusinessDay: return getNextBusinessDay(date); case TaskDueDateRule.PreviousBusinessDay: return getPreviousBusinessDay(date); case TaskDueDateRule.NoTransfer: default: return date; } };
+export const adjustDate = (date: Date, rule: TaskDueDateRule): Date => { switch (rule) { case TaskDueDateRule.NextBusinessDay: return getNextBusinessDay(date); case TaskDueDateRule.PreviousBusinessDay: return getPreviousBusinessDay(date); default: return date; } };
 
-// <<< ИЗМЕНЕНО: Логика getTaskStatus обновлена для поддержки новых статусов >>>
-// Эта функция теперь определяет статус ЗАДАЧИ ПО ДАТЕ, не учитывая другие факторы вроде блокировки.
-export const getTaskStatus = (dueDate: Date): TaskStatus => {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  
-  const due = new Date(dueDate);
-  due.setHours(0, 0, 0, 0);
-
-  const diffTime = due.getTime() - today.getTime();
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-  if (diffDays < 0) return TaskStatus.Overdue;
-  if (diffDays === 0) return TaskStatus.DueToday;
-  if (diffDays <= 7) return TaskStatus.DueSoon;
-  
-  return TaskStatus.Upcoming; // Заменили InProgress на Upcoming
+const getLastWorkingDayOfYear = (year: number): Date => {
+  let date = new Date(year, 11, 31);
+  while (isWeekend(date) || isHoliday(date)) {
+    date.setDate(date.getDate() - 1);
+  }
+  return date;
 };
-// --- Конец утилит ---
 
-interface TaskTemplate {
-    title: string;
-    month: number;
-    day: number;
-    repeat: RepeatFrequency;
-    rule: TaskDueDateRule;
-    isPeriodLocked?: boolean;
+// --- Новый движок генерации задач ---
+
+const MONTH_NAMES = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
+const MONTH_NAMES_GENITIVE = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
+
+function formatTaskTitle(template: string, year: number, periodIndex: number, periodicity: RepeatFrequency): string {
+    const month = (periodicity === RepeatFrequency.Monthly) ? periodIndex : new Date(year, periodIndex * 3).getMonth();
+    const quarter = (periodicity === RepeatFrequency.Quarterly) ? periodIndex + 1 : 0;
+    
+    return template
+        .replace('{year}', year.toString())
+        .replace('{year-1}', (year - 1).toString())
+        .replace('{quarter}', quarter.toString())
+        .replace('{monthName}', MONTH_NAMES[month])
+        .replace('{monthNameGenitive}', MONTH_NAMES_GENITIVE[month])
+        .replace('{lastDayOfMonth}', new Date(year, month + 1, 0).getDate().toString());
 }
 
-// === ЯВНЫЕ ШАБЛОНЫ ЗАДАЧ ===
-const USN_TASKS: TaskTemplate[] = [
-    { title: 'Авансовый платеж по УСН за 1 квартал', month: 3, day: 28, repeat: RepeatFrequency.Quarterly, rule: TaskDueDateRule.NextBusinessDay, isPeriodLocked: true },
-    { title: 'Авансовый платеж по УСН за полугодие', month: 6, day: 28, repeat: RepeatFrequency.Quarterly, rule: TaskDueDateRule.NextBusinessDay, isPeriodLocked: true },
-    { title: 'Авансовый платеж по УСН за 9 месяцев', month: 9, day: 28, repeat: RepeatFrequency.Quarterly, rule: TaskDueDateRule.NextBusinessDay, isPeriodLocked: true },
-    { title: 'Декларация по УСН за год', month: 3, day: 28, repeat: RepeatFrequency.Yearly, rule: TaskDueDateRule.NextBusinessDay, isPeriodLocked: true },
-    { title: 'Страховые взносы за себя (фикс.)', month: 11, day: 31, repeat: RepeatFrequency.Yearly, rule: TaskDueDateRule.NextBusinessDay, isPeriodLocked: true },
-];
+function calculateDueDate(year: number, periodIndex: number, rule: TaskRule): Date {
+    const { day, month, monthOffset, quarterMonthOffset, specialRule } = rule.dateConfig;
 
-const OSNO_TASKS: TaskTemplate[] = [
-    { title: 'Декларация по НДС за 4 кв. пред. года', month: 0, day: 25, repeat: RepeatFrequency.Quarterly, rule: TaskDueDateRule.NextBusinessDay, isPeriodLocked: true },
-    { title: 'Декларация по НДС за 1 квартал', month: 3, day: 25, repeat: RepeatFrequency.Quarterly, rule: TaskDueDateRule.NextBusinessDay, isPeriodLocked: true },
-    { title: 'Декларация по НДС за 2 квартал', month: 6, day: 25, repeat: RepeatFrequency.Quarterly, rule: TaskDueDateRule.NextBusinessDay, isPeriodLocked: true },
-    { title: 'Декларация по НДС за 3 квартал', month: 9, day: 25, repeat: RepeatFrequency.Quarterly, rule: TaskDueDateRule.NextBusinessDay, isPeriodLocked: true },
-    { title: 'Декларация по налогу на прибыль за год', month: 2, day: 28, repeat: RepeatFrequency.Yearly, rule: TaskDueDateRule.NextBusinessDay, isPeriodLocked: true },
-    { title: 'Аванс по налогу на прибыль за 1 кв.', month: 3, day: 28, repeat: RepeatFrequency.Quarterly, rule: TaskDueDateRule.NextBusinessDay, isPeriodLocked: true },
-    { title: 'Аванс по налогу на прибыль за полугодие', month: 6, day: 28, repeat: RepeatFrequency.Quarterly, rule: TaskDueDateRule.NextBusinessDay, isPeriodLocked: true },
-    { title: 'Аванс по налогу на прибыль за 9 мес.', month: 9, day: 28, repeat: RepeatFrequency.Quarterly, rule: TaskDueDateRule.NextBusinessDay, isPeriodLocked: true },
-];
-
-const EMPLOYEE_TASKS: TaskTemplate[] = Array.from({ length: 12 }, (_, i) => ([
-    { title: `НДФЛ и взносы за ${i + 1} месяц`, month: i + 1, day: 28, repeat: RepeatFrequency.Monthly, rule: TaskDueDateRule.PreviousBusinessDay, isPeriodLocked: true },
-    { title: `Персонифицированные сведения за ${i + 1} месяц`, month: i + 1, day: 25, repeat: RepeatFrequency.Monthly, rule: TaskDueDateRule.PreviousBusinessDay, isPeriodLocked: true }
-])).flat();
-// === КОНЕЦ ШАБЛОНОВ ===
-
-const generateTasksFromTemplates = (legalEntity: LegalEntity, years: number[], templates: TaskTemplate[]): Task[] => {
-    const tasks: Task[] = [];
-    years.forEach(year => {
-        templates.forEach(template => {
-            const stableSeriesId = `series-auto-${legalEntity.id}-${template.title.replace(/\s+/g, '-')}`;
-            const rawDueDate = new Date(year, template.month, template.day);
-            const dueDate = adjustDate(rawDueDate, template.rule);
-
-            tasks.push({
-                id: `${legalEntity.id}-${template.title.replace(/\s+/g, '-')}-${year}-${template.month}-${template.day}`,
-                legalEntityId: legalEntity.id,
-                title: template.title,
-                dueDate,
-                status: getTaskStatus(dueDate),
-                isAutomatic: true,
-                dueDateRule: template.rule,
-                repeat: template.repeat,
-                reminder: ReminderSetting.OneWeek,
-                seriesId: `${stableSeriesId}-${year}`,
-                isPeriodLocked: template.isPeriodLocked ?? false,
-            });
-        });
-    });
-    return tasks;
-};
-
-export const generateTasksForLegalEntity = (legalEntity: LegalEntity): Task[] => {
-    let allTasks: Task[] = [];
-    const currentYear = new Date().getFullYear();
-    const yearsToGenerate = [currentYear, currentYear + 1, currentYear + 2];
-
-    switch (legalEntity.taxSystem) {
-        case TaxSystem.USN_DOHODY:
-        case TaxSystem.USN_DOHODY_RASHODY:
-            allTasks.push(...generateTasksFromTemplates(legalEntity, yearsToGenerate, USN_TASKS));
-            break;
-        case TaxSystem.OSNO:
-            allTasks.push(...generateTasksFromTemplates(legalEntity, yearsToGenerate, OSNO_TASKS));
-            break;
-    }
-
-    if (legalEntity.hasEmployees) {
-        allTasks.push(...generateTasksFromTemplates(legalEntity, yearsToGenerate, EMPLOYEE_TASKS));
+    if (specialRule === 'LAST_WORKING_DAY_OF_YEAR') {
+        return getLastWorkingDayOfYear(year);
     }
     
-    // --- Логика патентов ---
+    let targetMonth: number;
+    
+    switch (rule.periodicity) {
+        case RepeatFrequency.Monthly:
+            targetMonth = periodIndex + (monthOffset || 0);
+            break;
+        case RepeatFrequency.Quarterly:
+            const quarterEndMonth = periodIndex * 3 + 2;
+            targetMonth = quarterEndMonth + (quarterMonthOffset || 0);
+            break;
+        case RepeatFrequency.Yearly:
+            targetMonth = month !== undefined ? month : 0;
+            break;
+        default:
+            return new Date();
+    }
+
+    return new Date(year, targetMonth, day);
+}
+
+export const generateTasksForLegalEntity = (legalEntity: LegalEntity): Task[] => {
+    const allTasks: Task[] = [];
+    const currentYear = new Date().getFullYear();
+    const yearsToGenerate = [currentYear - 1, currentYear, currentYear + 1, currentYear + 2];
+
+    TASK_RULES.forEach(rule => {
+        if (!rule.appliesTo(legalEntity)) {
+            return;
+        }
+
+        yearsToGenerate.forEach(year => {
+            const periods = rule.periodicity === RepeatFrequency.Monthly ? 12 :
+                            rule.periodicity === RepeatFrequency.Quarterly ? 4 : 1;
+
+            for (let i = 0; i < periods; i++) {
+                const periodIndex = i;
+                
+                if (rule.periodicity === RepeatFrequency.Monthly && rule.excludeMonths?.includes(periodIndex)) {
+                    continue;
+                }
+                
+                if (rule.periodicity === RepeatFrequency.Quarterly && rule.id.includes('AVANS') && periodIndex === 3) {
+                    continue;
+                }
+
+                const rawDueDate = calculateDueDate(year, periodIndex, rule);
+                
+                if (rawDueDate.getFullYear() < currentYear && rule.periodicity !== RepeatFrequency.Yearly) {
+                    continue;
+                }
+
+                const dueDate = adjustDate(rawDueDate, rule.dueDateRule);
+                const title = formatTaskTitle(rule.titleTemplate, year, periodIndex, rule.periodicity);
+
+                const task: Task = {
+                    id: `auto-${legalEntity.id}-${rule.id}-${year}-${periodIndex}`,
+                    legalEntityId: legalEntity.id,
+                    title,
+                    dueDate,
+                    status: TaskStatus.Upcoming,
+                    isAutomatic: true,
+                    dueDateRule: rule.dueDateRule,
+                    repeat: rule.periodicity,
+                    reminder: ReminderSetting.OneWeek,
+                    seriesId: `series-auto-${legalEntity.id}-${rule.id}`,
+                    isPeriodLocked: true,
+                };
+                allTasks.push(task);
+            }
+        });
+    });
+    
+    // --- Логика патентов (интегрирована) ---
     if (legalEntity.patents && legalEntity.patents.length > 0) {
         const todayYear = new Date().getFullYear();
         legalEntity.patents.forEach(patent => {
@@ -166,85 +173,68 @@ export const generateTasksForLegalEntity = (legalEntity: LegalEntity): Task[] =>
     return allTasks;
 };
 
-// <<< ИЗМЕНЕНО: Логика updateTaskStatuses теперь использует иерархию статусов >>>
-// Эта функция теперь - главный источник правды о статусе задачи.
-export const updateTaskStatuses = (tasks: Task[]): Task[] => {
-  return tasks.map(task => {
-    // Приоритет 1: Выполненные задачи не трогаем.
-    if (task.status === TaskStatus.Completed) {
-      return task;
-    }
 
-    // Приоритет 2: Проверяем, не заблокирована ли задача для будущего периода.
-    if (isTaskLocked(task)) {
-      // Если статус уже Locked, не создаем новый объект для оптимизации
-      return task.status === TaskStatus.Locked ? task : { ...task, status: TaskStatus.Locked };
-    }
+// --- Вспомогательные функции для статусов и блокировок ---
 
-    // Приоритет 3: Если не выполнена и не заблокирована, определяем статус по дате.
-    const statusByDate = getTaskStatus(task.dueDate);
-    return task.status === statusByDate ? task : { ...task, status: statusByDate };
-  });
+export const getTaskStatus = (dueDate: Date): TaskStatus => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const due = new Date(dueDate);
+  due.setHours(0, 0, 0, 0);
+  const diffTime = due.getTime() - today.getTime();
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  if (diffDays < 0) return TaskStatus.Overdue;
+  if (diffDays === 0) return TaskStatus.DueToday;
+  if (diffDays <= 7) return TaskStatus.DueSoon;
+  return TaskStatus.Upcoming;
 };
 
-/**
- * Определяет номер квартала для указанной даты (1-4).
- */
 export const getQuarter = (date: Date): number => {
   const month = date.getMonth();
   return Math.floor(month / 3) + 1;
 };
 
-/**
- * Проверяет, заблокирована ли задача для выполнения в текущем периоде,
- * основываясь на ее периодичности (repeat).
- */
 export const isTaskLocked = (task: Task): boolean => {
-  // Если у задачи нет периодичности, она не блокируется.
   if (!task.repeat || task.repeat === RepeatFrequency.None) {
     return false;
   }
-  
-  // Игнорируем задачи, которые не должны блокироваться по своей природе (например, продление патента)
   if (task.isPeriodLocked === false) {
       return false;
   }
-
   const now = new Date();
   const taskDate = new Date(task.dueDate);
-
   const currentYear = now.getFullYear();
   const taskYear = taskDate.getFullYear();
-
-  // Блокируем любую периодическую задачу из будущего года
   if (taskYear > currentYear) {
     return true;
   }
-  // Если год уже прошел, задача точно не заблокирована
   if (taskYear < currentYear) {
     return false;
   }
-  
-  // Если мы дошли сюда, значит taskYear === currentYear.
-  // Теперь проверяем конкретный период.
-
   switch (task.repeat) {
     case RepeatFrequency.Monthly:
       return taskDate.getMonth() > now.getMonth();
-    
     case RepeatFrequency.Quarterly:
       return getQuarter(taskDate) > getQuarter(now);
-
     case RepeatFrequency.Yearly:
-      // Если год текущий, годовая задача не может быть заблокирована
       return false;
-      
-    // Weekly и Daily задачи не блокируем по периоду
     case RepeatFrequency.Weekly:
     case RepeatFrequency.Daily:
       return false;
-
     default:
       return false;
   }
+};
+
+export const updateTaskStatuses = (tasks: Task[]): Task[] => {
+  return tasks.map(task => {
+    if (task.status === TaskStatus.Completed) {
+      return task;
+    }
+    if (isTaskLocked(task)) {
+      return task.status === TaskStatus.Locked ? task : { ...task, status: TaskStatus.Locked };
+    }
+    const statusByDate = getTaskStatus(task.dueDate);
+    return task.status === statusByDate ? task : { ...task, status: statusByDate };
+  });
 };
