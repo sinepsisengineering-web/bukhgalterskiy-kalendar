@@ -5,19 +5,15 @@ import { Task, TaskStatus, LegalEntity } from '../types';
 import { TaskItem } from './TaskItem';
 import { TASK_STATUS_STYLES } from '../constants';
 
-// --- Утилиты для работы с датами (остаются без изменений) ---
+// --- Утилиты для работы с датами (без изменений) ---
 const RUSSIAN_HOLIDAYS = new Set([
   '2024-01-01', '2024-01-02', '2024-01-03', '2024-01-04', '2024-01-05', '2024-01-06', '2024-01-07', '2024-01-08',
   '2024-02-23', '2024-03-08', '2024-05-01', '2024-05-09', '2024-06-12', '2024-11-04', '2024-12-31',
   '2025-01-01', '2025-01-02', '2025-01-03', '2025-01-04', '2025-01-05', '2025-01-06', '2025-01-07', '2025-01-08',
   '2025-02-23', '2025-03-08', '2025-05-01', '2025-05-09', '2025-06-12', '2025-11-04',
 ]);
-
 const toISODateString = (date: Date) => date.toISOString().split('T')[0];
-const isWeekend = (date: Date) => {
-  const day = date.getDay();
-  return day === 6 || day === 0;
-};
+const isWeekend = (date: Date) => { const day = date.getDay(); return day === 6 || day === 0; };
 const isHoliday = (date: Date) => RUSSIAN_HOLIDAYS.has(toISODateString(date));
 // --- Конец утилит ---
 
@@ -26,7 +22,7 @@ interface CalendarProps {
   legalEntities: LegalEntity[];
   onUpdateTaskStatus: (taskId: string, status: TaskStatus) => void;
   onAddTask: (date: Date) => void;
-  onOpenDetail: (tasks: Task[], date: Date) => void; // Обновим, чтобы соответствовать App.tsx
+  onOpenDetail: (tasks: Task[], date: Date) => void;
   onDeleteTask: (taskId: string) => void;
 }
 
@@ -113,11 +109,14 @@ const WeekView: React.FC<{ tasks: Task[]; legalEntities: LegalEntity[]; currentD
                                 </p>
                             </div>
                             <div className="p-1 sm:p-2 space-y-1 sm:space-y-2 flex-1 min-h-[120px] overflow-y-auto">
-                                {tasksForDay.map(task => (
-                                    <div key={task.id} onClick={() => onOpenDetail([task], new Date(task.dueDate))} className={`text-xs p-1 rounded cursor-pointer truncate ${task.status === TaskStatus.Completed ? 'bg-green-100 text-green-700 line-through' : `${TASK_STATUS_STYLES[task.status].bg} ${TASK_STATUS_STYLES[task.status].text}`}`} title={`${task.title}`}>
-                                        {task.title}
-                                    </div>
-                                ))}
+                                {tasksForDay.map(task => {
+                                    const statusStyle = TASK_STATUS_STYLES[task.status] || TASK_STATUS_STYLES[TaskStatus.Locked];
+                                    return (
+                                        <div key={task.id} onClick={() => onOpenDetail([task], new Date(task.dueDate))} className={`text-xs p-1 rounded cursor-pointer truncate ${task.status === TaskStatus.Completed ? 'bg-green-100 text-green-700 line-through' : `${statusStyle.bg} ${statusStyle.text}`}`} title={`${task.title}`}>
+                                            {task.title}
+                                        </div>
+                                    )
+                                })}
                             </div>
                         </div>
                     );
@@ -180,10 +179,11 @@ const MonthView: React.FC<{ tasks: Task[]; legalEntities: LegalEntity[]; current
                                 const overallStatus = isAllCompleted
                                     ? TaskStatus.Completed
                                     : uncompletedTasks.find(t => t.status === TaskStatus.Overdue)?.status ||
+                                      uncompletedTasks.find(t => t.status === TaskStatus.DueToday)?.status ||
                                       uncompletedTasks.find(t => t.status === TaskStatus.DueSoon)?.status ||
-                                      TaskStatus.InProgress;
+                                      TaskStatus.Upcoming;
                                 
-                                const statusStyle = TASK_STATUS_STYLES[overallStatus];
+                                const statusStyle = TASK_STATUS_STYLES[overallStatus] || TASK_STATUS_STYLES[TaskStatus.Locked];
                                 
                                 return (
                                 <div 
@@ -241,7 +241,10 @@ const MiniMonthGrid: React.FC<{ year: number; month: number; tasks: Task[]; onSe
                             )}
                             <span className={`text-xs ${!isCurrentMonth ? 'text-slate-300' : d.getTime() === today.getTime() ? 'text-indigo-600 font-bold' : (isWknd || isHol) ? 'text-red-600' : 'text-slate-600'}`}>{d.getDate()}</span>
                             <div className="flex justify-center items-center h-2 space-x-px mt-px">
-                                {isCurrentMonth && statuses.slice(0, 4).map((status: TaskStatus) => <div key={status} className={`w-1.5 h-1.5 rounded-full opacity-75 ${TASK_STATUS_STYLES[status].bg.replace('-100', '-500')}`} />)}
+                                {isCurrentMonth && statuses.slice(0, 4).map((status: TaskStatus) => {
+                                    const statusStyle = TASK_STATUS_STYLES[status] || TASK_STATUS_STYLES[TaskStatus.Locked];
+                                    return <div key={status} className={`w-1.5 h-1.5 rounded-full opacity-75 ${statusStyle.bg.replace('-100', '-500')}`} />
+                                })}
                             </div>
                         </div>
                     )

@@ -66,10 +66,12 @@ export interface LegalEntity {
 }
 
 export enum TaskStatus {
+  Upcoming = 'Предстоящая',      // Был InProgress
   DueSoon = 'Скоро срок',
-  InProgress = 'В работе',
+  DueToday = 'Срок сегодня',     
   Overdue = 'Просрочена',
   Completed = 'Выполнена',
+  Locked = 'Будущий период', 
 }
 
 export enum TaskDueDateRule {

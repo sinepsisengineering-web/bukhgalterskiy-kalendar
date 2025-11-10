@@ -1,9 +1,8 @@
 // services/taskGenerator.ts
 
-// ИСПРАВЛЕНИЕ: Убираем импорт несуществующего типа 'Client'
 import { LegalEntity, Task, TaxSystem, TaskStatus, TaskDueDateRule, RepeatFrequency, ReminderSetting } from '../types';
 
-// --- Утилиты для дат (без изменений) ---
+// --- Утилиты для дат ---
 const RUSSIAN_HOLIDAYS = new Set<string>([
   '2024-01-01', '2024-01-02', '2024-01-03', '2024-01-04', '2024-01-05', '2024-01-06', '2024-01-07', '2024-01-08',
   '2024-02-23', '2024-03-08', '2024-05-01', '2024-05-09', '2024-06-12', '2024-11-04', '2024-12-31', '2025-01-01', '2025-01-02', '2025-01-03', '2025-01-04', '2025-01-05', '2025-01-06', '2025-01-07', '2025-01-08', '2025-02-23', '2025-03-08', '2025-05-01', '2025-05-09', '2025-06-12', '2025-11-04', '2026-01-01', '2026-01-02', '2026-01-03', '2026-01-04', '2026-01-05', '2026-01-06', '2026-01-07', '2026-01-08', '2026-02-23', '2026-03-08', '2026-05-01', '2026-05-09', '2026-06-12', '2026-11-04',
@@ -14,7 +13,25 @@ const isHoliday = (date: Date) => RUSSIAN_HOLIDAYS.has(toISODateString(date));
 const getNextBusinessDay = (date: Date): Date => { let nextDay = new Date(date); while (isWeekend(nextDay) || isHoliday(nextDay)) { nextDay.setDate(nextDay.getDate() + 1); } return nextDay; };
 const getPreviousBusinessDay = (date: Date): Date => { let prevDay = new Date(date); while (isWeekend(prevDay) || isHoliday(prevDay)) { prevDay.setDate(prevDay.getDate() - 1); } return prevDay; };
 export const adjustDate = (date: Date, rule: TaskDueDateRule): Date => { switch (rule) { case TaskDueDateRule.NextBusinessDay: return getNextBusinessDay(date); case TaskDueDateRule.PreviousBusinessDay: return getPreviousBusinessDay(date); case TaskDueDateRule.NoTransfer: default: return date; } };
-export const getTaskStatus = (dueDate: Date): TaskStatus => { const today = new Date(); today.setHours(0, 0, 0, 0); const due = new Date(dueDate); due.setHours(0, 0, 0, 0); const diffTime = due.getTime() - today.getTime(); const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); if (diffDays < 0) return TaskStatus.Overdue; if (diffDays <= 7) return TaskStatus.DueSoon; return TaskStatus.InProgress; };
+
+// <<< ИЗМЕНЕНО: Логика getTaskStatus обновлена для поддержки новых статусов >>>
+// Эта функция теперь определяет статус ЗАДАЧИ ПО ДАТЕ, не учитывая другие факторы вроде блокировки.
+export const getTaskStatus = (dueDate: Date): TaskStatus => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  
+  const due = new Date(dueDate);
+  due.setHours(0, 0, 0, 0);
+
+  const diffTime = due.getTime() - today.getTime();
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+  if (diffDays < 0) return TaskStatus.Overdue;
+  if (diffDays === 0) return TaskStatus.DueToday;
+  if (diffDays <= 7) return TaskStatus.DueSoon;
+  
+  return TaskStatus.Upcoming; // Заменили InProgress на Upcoming
+};
 // --- Конец утилит ---
 
 interface TaskTemplate {
@@ -78,7 +95,6 @@ const generateTasksFromTemplates = (legalEntity: LegalEntity, years: number[], t
     return tasks;
 };
 
-// ИСПРАВЛЕНИЕ: Добавляем 'export', чтобы эту функцию можно было импортировать
 export const generateTasksForLegalEntity = (legalEntity: LegalEntity): Task[] => {
     let allTasks: Task[] = [];
     const currentYear = new Date().getFullYear();
@@ -98,7 +114,7 @@ export const generateTasksForLegalEntity = (legalEntity: LegalEntity): Task[] =>
         allTasks.push(...generateTasksFromTemplates(legalEntity, yearsToGenerate, EMPLOYEE_TASKS));
     }
     
-    // --- Логика патентов (сохранена без изменений) ---
+    // --- Логика патентов ---
     if (legalEntity.patents && legalEntity.patents.length > 0) {
         const todayYear = new Date().getFullYear();
         legalEntity.patents.forEach(patent => {
@@ -150,14 +166,25 @@ export const generateTasksForLegalEntity = (legalEntity: LegalEntity): Task[] =>
     return allTasks;
 };
 
-// ИСПРАВЛЕНИЕ: Удаляем устаревшую функцию 'generateAllTasks', которая использовала 'Client'
-// export const generateAllTasks = (clients: Client[]): Task[] => { ... };
-
+// <<< ИЗМЕНЕНО: Логика updateTaskStatuses теперь использует иерархию статусов >>>
+// Эта функция теперь - главный источник правды о статусе задачи.
 export const updateTaskStatuses = (tasks: Task[]): Task[] => {
-    return tasks.map(task => {
-        if (task.status === TaskStatus.Completed) return task;
-        return { ...task, status: getTaskStatus(task.dueDate) };
-    });
+  return tasks.map(task => {
+    // Приоритет 1: Выполненные задачи не трогаем.
+    if (task.status === TaskStatus.Completed) {
+      return task;
+    }
+
+    // Приоритет 2: Проверяем, не заблокирована ли задача для будущего периода.
+    if (isTaskLocked(task)) {
+      // Если статус уже Locked, не создаем новый объект для оптимизации
+      return task.status === TaskStatus.Locked ? task : { ...task, status: TaskStatus.Locked };
+    }
+
+    // Приоритет 3: Если не выполнена и не заблокирована, определяем статус по дате.
+    const statusByDate = getTaskStatus(task.dueDate);
+    return task.status === statusByDate ? task : { ...task, status: statusByDate };
+  });
 };
 
 /**

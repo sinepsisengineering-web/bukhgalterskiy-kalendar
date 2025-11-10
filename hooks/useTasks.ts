@@ -1,8 +1,7 @@
 // src/hooks/useTasks.ts
 import { useState, useMemo, useEffect } from 'react';
 import { Task, LegalEntity, TaskStatus } from '../types';
-// ИСПРАВЛЕНИЕ 1: Импортируем правильную функцию
-import { generateTasksForLegalEntity, getTaskStatus } from '../services/taskGenerator'; 
+import { generateTasksForLegalEntity, getTaskStatus, updateTaskStatuses } from '../services/taskGenerator'; 
 
 // Функция для уведомлений
 const showNotification = (title: string, options: NotificationOptions) => {
@@ -16,9 +15,27 @@ const showNotification = (title: string, options: NotificationOptions) => {
 };
 
 export const useTasks = (legalEntities: LegalEntity[], legalEntityMap: Map<string, LegalEntity>) => {
+  // <<< ИЗМЕНЕНО: Реализована "пуленепробиваемая" логика миграции статусов >>>
   const [tasks, setTasks] = useState<Task[]>(() => {
     const savedTasks = localStorage.getItem('tasks');
-    return savedTasks ? JSON.parse(savedTasks).map((t: any) => ({ ...t, dueDate: new Date(t.dueDate) })) : [];
+    if (!savedTasks) return [];
+
+    const parsedTasks = JSON.parse(savedTasks);
+    
+    // Получаем массив всех ДОПУСТИМЫХ значений статуса из нашего enum
+    const validStatuses = Object.values(TaskStatus);
+
+    return parsedTasks.map((task: any) => {
+      // ПРОВЕРКА: Если у задачи нет статуса или ее статус НЕ является одним из допустимых...
+      if (!task.status || !validStatuses.includes(task.status)) {
+        // ...мы присваиваем ей безопасный статус по умолчанию.
+        // Дальше функция updateTaskStatuses все равно вычислит правильный.
+        task.status = TaskStatus.Upcoming;
+      }
+      
+      // Преобразуем строку даты в объект Date
+      return { ...task, dueDate: new Date(task.dueDate) };
+    });
   });
 
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
@@ -32,80 +49,76 @@ export const useTasks = (legalEntities: LegalEntity[], legalEntityMap: Map<strin
     localStorage.setItem('tasks', JSON.stringify(tasks));
   }, [tasks]);
 
-  // Этот useEffect теперь полностью соответствует логике вашего taskGenerator.ts
   useEffect(() => {
     if (legalEntities.length === 0) return;
     
-    // Генерируем полный набор ожидаемых авто-задач для всех активных клиентов
     const expectedAutoTasks = legalEntities.flatMap(le => generateTasksForLegalEntity(le));
     
     setTasks(currentTasks => {
-      // 1. Сохраняем все задачи, созданные вручную
       const manualTasks = currentTasks.filter(t => !t.isAutomatic);
-      
-      // 2. Создаем карту существующих авто-задач для быстрого доступа
       const existingAutoTasksMap = new Map<string, Task>();
       currentTasks.forEach(t => {
-        if (t.isAutomatic && t.seriesId) {
-            existingAutoTasksMap.set(`${t.seriesId}-${t.legalEntityId}`, t);
+        if (t.isAutomatic && t.id) {
+            existingAutoTasksMap.set(t.id, t);
         }
       });
 
-      // 3. Обновляем или добавляем авто-задачи
       const updatedAutoTasks = expectedAutoTasks.map((expectedTask: Task) => {
-        const existingTask = existingAutoTasksMap.get(`${expectedTask.seriesId}-${expectedTask.legalEntityId}`);
+        const existingTask = existingAutoTasksMap.get(expectedTask.id);
         if (existingTask) {
-          // Если задача уже существует, сохраняем ее ID и статус, но обновляем все остальное
-          return { ...expectedTask, id: existingTask.id, status: existingTask.status };
+          return { ...expectedTask, status: existingTask.status };
         }
-        // Если задачи нет, просто возвращаем новую сгенерированную
         return expectedTask;
       });
 
-      return [...manualTasks, ...updatedAutoTasks];
+      const allTasks = [...manualTasks, ...updatedAutoTasks];
+      return updateTaskStatuses(allTasks);
     });
   }, [legalEntities]);
 
   useEffect(() => {
     const checkTasks = () => {
-      let changed = false;
-      const updatedTasks = tasks.map(task => {
-        if (task.status === TaskStatus.Completed) return task;
+      setTasks(currentTasks => {
+        const newTasks = updateTaskStatuses(currentTasks);
         
-        const newStatus = getTaskStatus(task.dueDate);
-        if (task.status !== newStatus) {
-            changed = true;
-            const entity = legalEntityMap.get(task.legalEntityId);
-            if (newStatus === TaskStatus.Overdue) {
-                showNotification('Задача просрочена!', { body: `${task.title}\n${entity?.name || ''}` });
-            } else if (newStatus === TaskStatus.DueSoon) {
-                showNotification('Скоро срок задачи!', { body: `${task.title}\n${entity?.name || ''}` });
+        newTasks.forEach((newTask, index) => {
+          const oldTask = currentTasks[index];
+          if (oldTask && oldTask.status !== newTask.status) {
+            const entity = legalEntityMap.get(newTask.legalEntityId);
+            const entityName = entity?.name || '';
+            
+            if (newTask.status === TaskStatus.Overdue && oldTask.status !== TaskStatus.Overdue) {
+                showNotification('Задача просрочена!', { body: `${newTask.title}\n${entityName}` });
+            } else if (newTask.status === TaskStatus.DueToday && oldTask.status !== TaskStatus.DueToday) {
+                showNotification('Срок задачи сегодня!', { body: `${newTask.title}\n${entityName}` });
             }
-            return { ...task, status: newStatus };
-        }
-        return task;
+          }
+        });
+        
+        return newTasks;
       });
-      if (changed) {
-        setTasks(updatedTasks);
-      }
     };
 
-    const intervalId = setInterval(checkTasks, 1000 * 60 * 60); // Проверка каждый час
+    checkTasks(); 
+
+    const intervalId = setInterval(checkTasks, 1000 * 60 * 30);
     return () => clearInterval(intervalId);
-  }, [tasks, legalEntityMap]);
+  }, [legalEntityMap]);
 
   const handleSaveTask = (taskData: Omit<Task, 'id' | 'status' | 'isAutomatic' | 'seriesId'>) => {
+    let updatedTasks;
     if (taskToEdit && taskToEdit.id) {
-      setTasks(tasks.map(t => t.id === taskToEdit.id ? { ...t, ...taskData } : t));
+      updatedTasks = tasks.map(t => t.id === taskToEdit.id ? { ...t, ...taskData } : t);
     } else {
       const newTask: Task = {
         id: `task-${Date.now()}`,
-        status: getTaskStatus(taskData.dueDate),
+        status: TaskStatus.Upcoming,
         isAutomatic: false,
         ...taskData,
       };
-      setTasks(prev => [...prev, newTask]);
+      updatedTasks = [...tasks, newTask];
     }
+    setTasks(updateTaskStatuses(updatedTasks));
     setIsTaskModalOpen(false);
     setTaskToEdit(null);
   };
@@ -126,11 +139,23 @@ export const useTasks = (legalEntities: LegalEntity[], legalEntityMap: Map<strin
     setIsTaskDetailModalOpen(true);
   };
 
-  const handleToggleComplete = (taskId: string, currentStatus: TaskStatus) => {
-    const task = tasks.find(t => t.id === taskId);
-    if (!task) return;
-    const newStatus = currentStatus === TaskStatus.Completed ? getTaskStatus(task.dueDate) : TaskStatus.Completed;
-    setTasks(tasks.map(t => t.id === taskId ? { ...t, status: newStatus } : t));
+  const handleToggleComplete = (taskId: string) => {
+    setTasks(currentTasks => {
+      const task = currentTasks.find(t => t.id === taskId);
+      if (!task) return currentTasks;
+
+      const newTasks = currentTasks.map(t => {
+        if (t.id === taskId) {
+          const temporaryStatus = t.status === TaskStatus.Completed 
+            ? TaskStatus.Upcoming
+            : TaskStatus.Completed;
+          return { ...t, status: temporaryStatus };
+        }
+        return t;
+      });
+
+      return updateTaskStatuses(newTasks);
+    });
   };
   
   const handleEditTaskFromDetail = (task: Task) => {
@@ -147,7 +172,8 @@ export const useTasks = (legalEntities: LegalEntity[], legalEntityMap: Map<strin
   };
 
   const handleBulkComplete = (taskIds: string[]) => {
-    setTasks(tasks.map(t => taskIds.includes(t.id) ? { ...t, status: TaskStatus.Completed } : t));
+    const updatedTasks = tasks.map(t => taskIds.includes(t.id) ? { ...t, status: TaskStatus.Completed } : t)
+    setTasks(updateTaskStatuses(updatedTasks));
   };
 
   return {
