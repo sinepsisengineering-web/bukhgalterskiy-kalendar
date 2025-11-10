@@ -9,8 +9,9 @@
     "dev": "concurrently -k \"npm:vite\" \"npm:electron\"",
     "vite": "vite",
     "electron": "wait-on tcp:5173 && electron .",
-    "build": "vite build && electron-builder",
-    "release": "vite build && electron-builder --publish always"
+    "clean": "rimraf dist",
+    "build": "npm run clean && vite build && electron-builder",
+    "release": "npm run clean && vite build && electron-builder --publish always"
   },
   "dependencies": {
     "electron-log": "^5.4.3",
@@ -25,6 +26,7 @@
     "concurrently": "^8.2.2",
     "electron": "^28.2.0",
     "electron-builder": "^24.9.1",
+    "rimraf": "^6.1.0",
     "typescript": "^5.5.3",
     "vite": "^5.3.3",
     "wait-on": "^7.2.0"
