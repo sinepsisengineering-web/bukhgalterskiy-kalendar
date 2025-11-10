@@ -1,6 +1,7 @@
 // services/taskGenerator.ts
 
-import { Client, LegalEntity, Task, TaxSystem, TaskStatus, TaskDueDateRule, RepeatFrequency, ReminderSetting } from '../types';
+// ИСПРАВЛЕНИЕ: Убираем импорт несуществующего типа 'Client'
+import { LegalEntity, Task, TaxSystem, TaskStatus, TaskDueDateRule, RepeatFrequency, ReminderSetting } from '../types';
 
 // --- Утилиты для дат (без изменений) ---
 const RUSSIAN_HOLIDAYS = new Set<string>([
@@ -77,7 +78,8 @@ const generateTasksFromTemplates = (legalEntity: LegalEntity, years: number[], t
     return tasks;
 };
 
-const generateTasksForLegalEntity = (legalEntity: LegalEntity): Task[] => {
+// ИСПРАВЛЕНИЕ: Добавляем 'export', чтобы эту функцию можно было импортировать
+export const generateTasksForLegalEntity = (legalEntity: LegalEntity): Task[] => {
     let allTasks: Task[] = [];
     const currentYear = new Date().getFullYear();
     const yearsToGenerate = [currentYear, currentYear + 1, currentYear + 2];
@@ -148,17 +150,8 @@ const generateTasksForLegalEntity = (legalEntity: LegalEntity): Task[] => {
     return allTasks;
 };
 
-export const generateAllTasks = (clients: Client[]): Task[] => {
-    let allTasks: Task[] = [];
-    clients.forEach(client => {
-        if (!client.isArchived && client.legalEntities) {
-            client.legalEntities.forEach(legalEntity => {
-                allTasks.push(...generateTasksForLegalEntity(legalEntity));
-            });
-        }
-    });
-    return allTasks;
-};
+// ИСПРАВЛЕНИЕ: Удаляем устаревшую функцию 'generateAllTasks', которая использовала 'Client'
+// export const generateAllTasks = (clients: Client[]): Task[] => { ... };
 
 export const updateTaskStatuses = (tasks: Task[]): Task[] => {
     return tasks.map(task => {

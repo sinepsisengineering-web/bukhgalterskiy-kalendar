@@ -19,6 +19,7 @@ import { useTasks } from './hooks/useTasks';
 
 type View = 'calendar' | 'tasks' | 'clients' | 'archive' | 'settings';
 
+// ... остальная часть файла (ConfirmationProps, parseLegalEntity) без изменений ...
 interface ConfirmationProps {
     title: string;
     message: React.ReactNode;
@@ -51,6 +52,7 @@ const parseLegalEntity = (le: any): LegalEntity => {
 };
 
 const App: React.FC = () => {
+    // ... все хуки useState остаются без изменений ...
     const [legalEntities, setLegalEntities] = useState<LegalEntity[]>(() => {
         try {
             const savedLegalEntities = localStorage.getItem('legalEntities');
@@ -91,18 +93,20 @@ const App: React.FC = () => {
 
     const legalEntityMap = useMemo(() => new Map(legalEntities.map(le => [le.id, le])), [legalEntities]);
     
+    // Получаем нашу новую универсальную функцию из хука
     const {
         tasks, isTaskModalOpen, setIsTaskModalOpen, taskToEdit, setTaskToEdit, taskModalDefaultDate,
         isTaskDetailModalOpen, setIsTaskDetailModalOpen, tasksForDetailView,
-        handleSaveTask, handleOpenTaskForm, handleOpenTaskDetail, handleToggleComplete,
-        handleEditTaskFromDetail, handleDeleteTask, handleBulkComplete,
+        handleSaveTask, handleOpenNewTaskForm, // ИЗМЕНЕНИЕ: Используем handleOpenNewTaskForm
+        handleOpenTaskDetail, handleToggleComplete, handleEditTaskFromDetail, handleDeleteTask, handleBulkComplete,
     } = useTasks(activeLegalEntities, legalEntityMap);
 
     useEffect(() => {
         localStorage.setItem('legalEntities', JSON.stringify(legalEntities));
     }, [legalEntities]);
     
-    const handleSaveLegalEntity = (entityData: LegalEntity) => {
+    // ... все остальные обработчики (handleSaveLegalEntity, etc.) остаются без изменений ...
+     const handleSaveLegalEntity = (entityData: LegalEntity) => {
         const entityExists = entityData.id && legalEntities.some(le => le.id === entityData.id);
         const updatedEntities = entityExists
             ? legalEntities.map(le => le.id === entityData.id ? entityData : le)
@@ -157,6 +161,8 @@ const App: React.FC = () => {
         setLegalEntityToEdit(entity ? { ...entity } : null);
         setIsLegalEntityModalOpen(true);
     };
+    
+    // Удаляем отсюда локальный обработчик handleAddTaskForClient
 
     const renderContent = () => {
         if (selectedLegalEntity && activeView === 'clients') {
@@ -168,10 +174,7 @@ const App: React.FC = () => {
                 onEdit={handleOpenLegalEntityForm}
                 onArchive={handleArchiveLegalEntity}
                 onDelete={handleDeleteLegalEntity}
-                onAddTask={(defaultValues) => {
-                    setTaskToEdit(defaultValues as Task);
-                    setIsTaskModalOpen(true);
-                }}
+                onAddTask={() => handleOpenNewTaskForm({ legalEntityId: selectedLegalEntity.id })}
                 onOpenTaskDetail={handleOpenTaskDetail}
                 onBulkComplete={handleBulkComplete}
                 onDeleteTask={handleDeleteTask}
@@ -179,8 +182,29 @@ const App: React.FC = () => {
             />;
         }
         switch(activeView) {
-            case 'calendar': return <Calendar tasks={tasks} legalEntities={activeLegalEntities} onUpdateTaskStatus={() => {}} onAddTask={handleOpenTaskForm} onOpenDetail={handleOpenTaskDetail} onDeleteTask={handleDeleteTask} />;
-            case 'tasks': return <TasksListView key={tasksViewKey} tasks={tasks} legalEntities={activeLegalEntities} onOpenDetail={handleOpenTaskDetail} onBulkUpdate={handleBulkComplete} onDeleteTask={handleDeleteTask} />;
+            case 'calendar': return <Calendar tasks={tasks} legalEntities={activeLegalEntities} onUpdateTaskStatus={() => {}} onAddTask={(date) => handleOpenNewTaskForm({ dueDate: date })} onOpenDetail={handleOpenTaskDetail} onDeleteTask={handleDeleteTask} />;
+            
+            // === ВОЗВРАЩАЕМ КНОПКУ "ДОБАВИТЬ ЗАДАЧУ" НА ГЛАВНЫЙ ЭКРАН ===
+            case 'tasks': 
+                const addTaskButton = (
+                    <button
+                        onClick={() => handleOpenNewTaskForm()} // Вызываем универсальную функцию без параметров
+                        className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors shadow"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" /></svg>
+                        Добавить задачу
+                    </button>
+                );
+                return <TasksListView 
+                    key={tasksViewKey} 
+                    tasks={tasks} 
+                    legalEntities={activeLegalEntities} 
+                    onOpenDetail={handleOpenTaskDetail} 
+                    onBulkUpdate={handleBulkComplete} 
+                    onDeleteTask={handleDeleteTask}
+                    customAddTaskButton={addTaskButton} // Передаем кнопку в пропсы
+                />;
+
             case 'clients': return <ClientList legalEntities={activeLegalEntities} onSelectLegalEntity={setSelectedLegalEntity} onAddLegalEntity={() => handleOpenLegalEntityForm(null)} />;
             case 'archive': return <ArchiveView archivedLegalEntities={archivedLegalEntities} onUnarchive={handleUnarchiveLegalEntity} onDelete={() => {}} />;
             case 'settings': return <SettingsView onClearData={() => {}} />;
@@ -190,14 +214,20 @@ const App: React.FC = () => {
 
     return (
         <div className="flex h-screen bg-slate-100 font-sans">
+            {/* ... остальная часть return без изменений ... */}
             <Sidebar activeView={activeView} setActiveView={(v) => { setSelectedLegalEntity(null); if (v === 'tasks') { setTasksViewKey(prev => prev + 1); } setActiveView(v as View); }} />
-            <main className="flex-1 p-8 overflow-y-auto relative">{renderContent()}</main>
+            
+            <main className="flex-1 flex flex-col overflow-hidden">
+                <div className="flex-1 p-8 overflow-y-auto">
+                    {renderContent()}
+                </div>
+            </main>
 
             <Modal isOpen={isLegalEntityModalOpen} onClose={() => { setIsLegalEntityModalOpen(false); setLegalEntityToEdit(null); }} title={legalEntityToEdit ? 'Редактировать юр. лицо' : 'Новое юр. лицо'}>
                 <ClientForm legalEntity={legalEntityToEdit} onSave={handleSaveLegalEntity} onCancel={() => { setIsLegalEntityModalOpen(false); setLegalEntityToEdit(null); }} />
             </Modal>
             
-            <Modal isOpen={isTaskModalOpen} onClose={() => setIsTaskModalOpen(false)} title={taskToEdit ? 'Редактировать задачу' : 'Новая задача'}>
+            <Modal isOpen={isTaskModalOpen} onClose={() => setIsTaskModalOpen(false)} title={taskToEdit && taskToEdit.id ? 'Редактировать задачу' : 'Новая задача'}>
                 <TaskForm legalEntities={activeLegalEntities} onSave={handleSaveTask} onCancel={() => { setIsTaskModalOpen(false); setTaskToEdit(null); }} taskToEdit={taskToEdit} defaultDate={taskModalDefaultDate}/>
             </Modal>
             

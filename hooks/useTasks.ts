@@ -1,194 +1,160 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Task, Client, TaskStatus, ReminderSetting } from '../types';
-// <<<===== ИМПОРТИРУЕМ isTaskLocked
-import { generateAllTasks, updateTaskStatuses, getTaskStatus, isTaskLocked } from '../services/taskGenerator';
+// src/hooks/useTasks.ts
+import { useState, useMemo, useEffect } from 'react';
+import { Task, LegalEntity, TaskStatus } from '../types';
+// ИСПРАВЛЕНИЕ 1: Импортируем правильную функцию
+import { generateTasksForLegalEntity, getTaskStatus } from '../services/taskGenerator'; 
 
-// Функция для воспроизведения звука, вынесенная из App.tsx
-const notificationSound = new Audio('data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=');
+// Функция для уведомлений
+const showNotification = (title: string, options: NotificationOptions) => {
+  if (Notification.permission === 'granted') {
+    new Notification(title, options);
+    if (localStorage.getItem('soundEnabled') === 'true') {
+      const audio = new Audio('./notification.mp3');
+      audio.play().catch(e => console.error("Audio play failed:", e));
+    }
+  }
+};
 
-export const useTasks = (activeClients: Client[], legalEntityMap: Map<string, any>) => {
-    // ======== STATE MANAGEMENT ========
-    const [tasks, setTasks] = useState<Task[]>(() => {
-        try {
-            const savedTasks = localStorage.getItem('tasks');
-            if (savedTasks) {
-                const parsedTasks = JSON.parse(savedTasks);
-                return parsedTasks.map((t: Task) => ({ ...t, dueDate: new Date(t.dueDate) }));
-            }
-            return [];
-        } catch (error) {
-            console.error("Failed to load tasks from localStorage", error);
-            return [];
-        }
-    });
+export const useTasks = (legalEntities: LegalEntity[], legalEntityMap: Map<string, LegalEntity>) => {
+  const [tasks, setTasks] = useState<Task[]>(() => {
+    const savedTasks = localStorage.getItem('tasks');
+    return savedTasks ? JSON.parse(savedTasks).map((t: any) => ({ ...t, dueDate: new Date(t.dueDate) })) : [];
+  });
 
-    const [notifiedTaskIds, setNotifiedTaskIds] = useState(new Set<string>());
+  const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
+  const [taskToEdit, setTaskToEdit] = useState<Task | null>(null);
+  const [taskModalDefaultDate, setTaskModalDefaultDate] = useState<Date | null>(null);
 
-    // Modal States
-    const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
-    const [taskToEdit, setTaskToEdit] = useState<Task | null>(null);
-    const [taskModalDefaultDate, setTaskModalDefaultDate] = useState<Date | null>(null);
-    const [isTaskDetailModalOpen, setIsTaskDetailModalOpen] = useState(false);
-    const [tasksForDetailView, setTasksForDetailView] = useState<Task[]>([]);
+  const [isTaskDetailModalOpen, setIsTaskDetailModalOpen] = useState(false);
+  const [tasksForDetailView, setTasksForDetailView] = useState<Task[]>([]);
 
-    // ======== EFFECTS ========
-    useEffect(() => {
-        localStorage.setItem('tasks', JSON.stringify(tasks));
-    }, [tasks]);
+  useEffect(() => {
+    localStorage.setItem('tasks', JSON.stringify(tasks));
+  }, [tasks]);
 
-    useEffect(() => {
-        const currentManualTasks = tasks.filter(t => !t.isAutomatic);
-        const currentAutoTasks = tasks.filter(t => t.isAutomatic);
-        const existingAutoTasksMap = new Map(currentAutoTasks.map(t => [t.seriesId, t]));
-        const newlyGeneratedTasks = generateAllTasks(activeClients);
-        const mergedAutoTasks = newlyGeneratedTasks.map(newTask => {
-            const existingTask = existingAutoTasksMap.get(newTask.seriesId);
-            return existingTask ? { ...newTask, status: existingTask.status } : newTask;
-        });
-        const allTasks = [...mergedAutoTasks, ...currentManualTasks];
-        setTasks(updateTaskStatuses(allTasks));
-    }, [activeClients]); // eslint-disable-line react-hooks/exhaustive-deps
-
-    useEffect(() => {
-        const interval = setInterval(() => {
-            if (Notification.permission !== 'granted') return;
-            const now = new Date();
-            const isSoundEnabled = localStorage.getItem('soundEnabled') === 'true';
-            tasks.forEach(task => {
-                if (task.status === TaskStatus.Completed || notifiedTaskIds.has(task.id) || task.reminder === ReminderSetting.None) return;
-                const dueDate = new Date(task.dueDate);
-                const timeDiff = dueDate.getTime() - now.getTime();
-                let reminderMillis = 0;
-                switch (task.reminder) {
-                    case ReminderSetting.OneHour: reminderMillis = 60 * 60 * 1000; break;
-                    case ReminderSetting.OneDay: reminderMillis = 24 * 60 * 60 * 1000; break;
-                    case ReminderSetting.OneWeek: reminderMillis = 7 * 24 * 60 * 60 * 1000; break;
-                }
-                if (timeDiff > 0 && timeDiff <= reminderMillis) {
-                    const entityInfo = legalEntityMap.get(task.legalEntityId);
-                    const clientName = entityInfo ? `${entityInfo.clientName} (${entityInfo.legalEntity.name})` : 'Неизвестный клиент';
-                    new Notification('Напоминание о задаче', {
-                        body: `${task.title}\nСрок до: ${dueDate.toLocaleDateString('ru-RU')}\nКлиент: ${clientName}`,
-                    });
-                    if (isSoundEnabled) notificationSound.play().catch(e => console.error("Audio playback failed", e));
-                    setNotifiedTaskIds(prev => new Set(prev).add(task.id));
-                }
-            });
-        }, 60 * 1000);
-        return () => clearInterval(interval);
-    }, [tasks, legalEntityMap, notifiedTaskIds]);
-
-
-    // ======== HANDLERS - TASKS ========
-    const handleSaveTask = (taskData: Omit<Task, 'id' | 'status' | 'isAutomatic' | 'seriesId'>) => {
-        setTasks(prevTasks => {
-            if (taskToEdit) {
-                return prevTasks.map(t => t.id === taskToEdit.id ? { ...t, ...taskData } : t);
-            } else {
-                const newTask: Task = {
-                    ...taskData,
-                    id: `task-${Date.now()}`,
-                    isAutomatic: false,
-                    status: getTaskStatus(taskData.dueDate),
-                };
-                return [...prevTasks, newTask];
-            }
-        });
-        setIsTaskModalOpen(false);
-        setTaskToEdit(null);
-    };
-
-    const handleOpenTaskForm = useCallback((date: Date) => {
-        setTaskToEdit(null);
-        setTaskModalDefaultDate(date);
-        setIsTaskModalOpen(true);
-    }, []);
+  // Этот useEffect теперь полностью соответствует логике вашего taskGenerator.ts
+  useEffect(() => {
+    if (legalEntities.length === 0) return;
     
-    const handleOpenTaskDetail = useCallback((tasksForDetail: Task[]) => {
-        if (tasksForDetail && tasksForDetail.length > 0) {
-            setTasksForDetailView(tasksForDetail);
-            setIsTaskDetailModalOpen(true);
-        }
-    }, []);
+    // Генерируем полный набор ожидаемых авто-задач для всех активных клиентов
+    const expectedAutoTasks = legalEntities.flatMap(le => generateTasksForLegalEntity(le));
     
-    // <<<===== НАЧАЛО ИЗМЕНЕНИЙ =====>>>
-    const handleToggleComplete = useCallback((taskId: string, currentStatus: TaskStatus) => {
-        setTasks(prevTasks => {
-            const taskToToggle = prevTasks.find(t => t.id === taskId);
-            if (!taskToToggle) return prevTasks;
-
-            if (currentStatus !== TaskStatus.Completed && isTaskLocked(taskToToggle)) {
-                console.warn(`Attempted to complete a locked task: ${taskToToggle.title}`);
-                return prevTasks; 
-            }
-
-            const newTasks = prevTasks.map(task => {
-                if (task.id === taskId) {
-                    if (currentStatus === TaskStatus.Completed) {
-                        const recalculatedTask = { ...task, status: TaskStatus.InProgress };
-                        return { ...recalculatedTask, status: getTaskStatus(new Date(recalculatedTask.dueDate)) };
-                    }
-                    return { ...task, status: TaskStatus.Completed };
-                }
-                return task;
-            });
-
-            const updatedDetailTasks = tasksForDetailView.map(t => newTasks.find(nt => nt.id === t.id) || t);
-            setTasksForDetailView(updatedDetailTasks);
-            if (updatedDetailTasks.every(t => t.status === TaskStatus.Completed)) {
-                setTimeout(() => setIsTaskDetailModalOpen(false), 500);
-            }
-            return newTasks;
-        });
-    }, [tasksForDetailView]);
-
-    const handleBulkComplete = useCallback((taskIds: string[]) => {
-      setTasks(prevTasks => {
-          const tasksById = new Map(prevTasks.map(t => [t.id, t]));
-          
-          return prevTasks.map(task => {
-              if (taskIds.includes(task.id)) {
-                  const originalTask = tasksById.get(task.id);
-                  if (originalTask && !isTaskLocked(originalTask)) {
-                      return { ...task, status: TaskStatus.Completed };
-                  }
-              }
-              return task;
-          });
+    setTasks(currentTasks => {
+      // 1. Сохраняем все задачи, созданные вручную
+      const manualTasks = currentTasks.filter(t => !t.isAutomatic);
+      
+      // 2. Создаем карту существующих авто-задач для быстрого доступа
+      const existingAutoTasksMap = new Map<string, Task>();
+      currentTasks.forEach(t => {
+        if (t.isAutomatic && t.seriesId) {
+            existingAutoTasksMap.set(`${t.seriesId}-${t.legalEntityId}`, t);
+        }
       });
-    }, []);
-    // <<<===== КОНЕЦ ИЗМЕНЕНИЙ =====>>>
 
-    const handleEditTaskFromDetail = (task: Task) => {
-        setIsTaskDetailModalOpen(false);
-        setTimeout(() => {
-            setTaskToEdit(task);
-            setIsTaskModalOpen(true);
-        }, 300);
-    };
-    
-    const handleDeleteTask = (taskId: string) => {
-        setTasks(prev => prev.filter(t => t.id !== taskId));
-        setIsTaskDetailModalOpen(false);
+      // 3. Обновляем или добавляем авто-задачи
+      const updatedAutoTasks = expectedAutoTasks.map((expectedTask: Task) => {
+        const existingTask = existingAutoTasksMap.get(`${expectedTask.seriesId}-${expectedTask.legalEntityId}`);
+        if (existingTask) {
+          // Если задача уже существует, сохраняем ее ID и статус, но обновляем все остальное
+          return { ...expectedTask, id: existingTask.id, status: existingTask.status };
+        }
+        // Если задачи нет, просто возвращаем новую сгенерированную
+        return expectedTask;
+      });
+
+      return [...manualTasks, ...updatedAutoTasks];
+    });
+  }, [legalEntities]);
+
+  useEffect(() => {
+    const checkTasks = () => {
+      let changed = false;
+      const updatedTasks = tasks.map(task => {
+        if (task.status === TaskStatus.Completed) return task;
+        
+        const newStatus = getTaskStatus(task.dueDate);
+        if (task.status !== newStatus) {
+            changed = true;
+            const entity = legalEntityMap.get(task.legalEntityId);
+            if (newStatus === TaskStatus.Overdue) {
+                showNotification('Задача просрочена!', { body: `${task.title}\n${entity?.name || ''}` });
+            } else if (newStatus === TaskStatus.DueSoon) {
+                showNotification('Скоро срок задачи!', { body: `${task.title}\n${entity?.name || ''}` });
+            }
+            return { ...task, status: newStatus };
+        }
+        return task;
+      });
+      if (changed) {
+        setTasks(updatedTasks);
+      }
     };
 
-    // Возвращаем все состояния и функции, которые понадобятся в App.tsx
-    return {
-        tasks,
-        isTaskModalOpen,
-        setIsTaskModalOpen,
-        taskToEdit,
-        setTaskToEdit,
-        taskModalDefaultDate,
-        isTaskDetailModalOpen,
-        setIsTaskDetailModalOpen,
-        tasksForDetailView,
-        handleSaveTask,
-        handleOpenTaskForm,
-        handleOpenTaskDetail,
-        handleToggleComplete,
-        handleEditTaskFromDetail,
-        handleDeleteTask,
-        handleBulkComplete,
+    const intervalId = setInterval(checkTasks, 1000 * 60 * 60); // Проверка каждый час
+    return () => clearInterval(intervalId);
+  }, [tasks, legalEntityMap]);
+
+  const handleSaveTask = (taskData: Omit<Task, 'id' | 'status' | 'isAutomatic' | 'seriesId'>) => {
+    if (taskToEdit && taskToEdit.id) {
+      setTasks(tasks.map(t => t.id === taskToEdit.id ? { ...t, ...taskData } : t));
+    } else {
+      const newTask: Task = {
+        id: `task-${Date.now()}`,
+        status: getTaskStatus(taskData.dueDate),
+        isAutomatic: false,
+        ...taskData,
+      };
+      setTasks(prev => [...prev, newTask]);
+    }
+    setIsTaskModalOpen(false);
+    setTaskToEdit(null);
+  };
+  
+  const handleOpenNewTaskForm = (defaultValues?: Partial<Task>) => {
+    const date = defaultValues?.dueDate instanceof Date ? defaultValues.dueDate : new Date();
+    const newTaskScaffold: Partial<Task> = {
+      dueDate: date,
+      ...defaultValues
     };
+    setTaskModalDefaultDate(date);
+    setTaskToEdit(newTaskScaffold as Task);
+    setIsTaskModalOpen(true);
+  };
+
+  const handleOpenTaskDetail = (tasks: Task[], date: Date) => {
+    setTasksForDetailView(tasks);
+    setIsTaskDetailModalOpen(true);
+  };
+
+  const handleToggleComplete = (taskId: string, currentStatus: TaskStatus) => {
+    const task = tasks.find(t => t.id === taskId);
+    if (!task) return;
+    const newStatus = currentStatus === TaskStatus.Completed ? getTaskStatus(task.dueDate) : TaskStatus.Completed;
+    setTasks(tasks.map(t => t.id === taskId ? { ...t, status: newStatus } : t));
+  };
+  
+  const handleEditTaskFromDetail = (task: Task) => {
+    setIsTaskDetailModalOpen(false);
+    setTimeout(() => {
+      setTaskToEdit(task);
+      setIsTaskModalOpen(true);
+    }, 200);
+  };
+
+  const handleDeleteTask = (taskId: string) => {
+    setTasks(tasks.filter(t => t.id !== taskId));
+    setIsTaskDetailModalOpen(false);
+  };
+
+  const handleBulkComplete = (taskIds: string[]) => {
+    setTasks(tasks.map(t => taskIds.includes(t.id) ? { ...t, status: TaskStatus.Completed } : t));
+  };
+
+  return {
+    tasks, isTaskModalOpen, setIsTaskModalOpen, taskToEdit, setTaskToEdit, taskModalDefaultDate,
+    isTaskDetailModalOpen, setIsTaskDetailModalOpen, tasksForDetailView,
+    handleSaveTask,
+    handleOpenNewTaskForm,
+    handleOpenTaskDetail, handleToggleComplete, handleEditTaskFromDetail, handleDeleteTask, handleBulkComplete,
+  };
 };

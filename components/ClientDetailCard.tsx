@@ -1,8 +1,9 @@
 // src/components/ClientDetailCard.tsx
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { LegalEntity, Task, Patent, Credential, Note } from '../types';
-import { TasksListView } from './TasksListView';
+import { ReusableTaskList } from './ReusableTaskList';
+import { FilterModal, FilterState } from './FilterModal';
 
 type DetailTab = 'requisites' | 'tasks' | 'patents' | 'credentials' | 'notes';
 
@@ -29,7 +30,6 @@ const DetailRow: React.FC<{ label: string; value?: string | React.ReactNode }> =
 
 const AddNoteForm: React.FC<{ onAdd: (text: string) => void }> = ({ onAdd }) => {
     const [text, setText] = useState('');
-
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (text.trim()) {
@@ -37,7 +37,6 @@ const AddNoteForm: React.FC<{ onAdd: (text: string) => void }> = ({ onAdd }) => 
             setText('');
         }
     };
-
     return (
         <form onSubmit={handleSubmit} className="mt-4 p-4 border-t border-slate-200">
             <textarea
@@ -60,7 +59,6 @@ const AddNoteForm: React.FC<{ onAdd: (text: string) => void }> = ({ onAdd }) => 
     );
 };
 
-
 export const ClientDetailCard: React.FC<ClientDetailCardProps> = ({ 
   legalEntity, 
   tasks, 
@@ -75,6 +73,29 @@ export const ClientDetailCard: React.FC<ClientDetailCardProps> = ({
   onAddNote
 }) => {
   const [activeTab, setActiveTab] = useState<DetailTab>('requisites');
+
+  const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
+  const [filters, setFilters] = useState<FilterState>({
+    searchText: '',
+    selectedClients: [],
+    selectedYear: 'all',
+    selectedStatuses: [],
+  });
+
+  const availableYears = useMemo(() => 
+    Array.from(new Set(tasks.map(task => new Date(task.dueDate).getFullYear()))).sort((a, b) => a - b), 
+  [tasks]);
+
+  const filteredTasks = useMemo(() => {
+    return tasks.filter(task => {
+        const searchLower = filters.searchText.toLowerCase();
+        return (
+            task.title.toLowerCase().includes(searchLower) &&
+            (filters.selectedYear === 'all' || new Date(task.dueDate).getFullYear() === parseInt(filters.selectedYear, 10)) &&
+            (filters.selectedStatuses.length === 0 || filters.selectedStatuses.includes(task.status))
+        );
+    });
+  }, [tasks, filters]);
 
   const renderTabContent = () => {
     switch (activeTab) {
@@ -96,16 +117,26 @@ export const ClientDetailCard: React.FC<ClientDetailCardProps> = ({
           </div>
         );
       
-      case 'tasks':
+      case 'tasks': {
+        const legalEntityMap = new Map<string, LegalEntity>([[legalEntity.id, legalEntity]]);
         return (
-            <div className="h-full">
-              <TasksListView
-                tasks={tasks}
-                legalEntities={[legalEntity]} 
-                onOpenDetail={onOpenTaskDetail}
-                onBulkUpdate={onBulkComplete}
-                onDeleteTask={onDeleteTask}
-                customAddTaskButton={
+          <div className="h-full flex flex-col">
+            <ReusableTaskList
+              tasks={filteredTasks}
+              legalEntityMap={legalEntityMap}
+              selectedTaskIds={new Set<string>()}
+              selectableTaskIds={new Set<string>()}
+              onTaskSelect={() => {}}
+              onOpenDetail={onOpenTaskDetail}
+              onDeleteTask={onDeleteTask}
+              headerComponent={
+                <div className="flex justify-between items-center">
+                  <button 
+                    onClick={() => setIsFilterModalOpen(true)} 
+                    className="px-3 py-1 text-sm bg-slate-100 text-slate-700 rounded hover:bg-slate-200 flex items-center gap-2">
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" /></svg>
+                      Фильтры
+                  </button>
                   <button
                     onClick={() => onAddTask({ legalEntityId: legalEntity.id })}
                     className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors shadow"
@@ -113,10 +144,22 @@ export const ClientDetailCard: React.FC<ClientDetailCardProps> = ({
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" /></svg>
                     Добавить задачу
                   </button>
-                }
-              />
-            </div>
+                </div>
+              }
+              emptyStateText="У этого клиента нет задач, соответствующих фильтру."
+              stickyTopOffset={0}
+            />
+            <FilterModal
+                isOpen={isFilterModalOpen}
+                onClose={() => setIsFilterModalOpen(false)}
+                clients={[legalEntity]}
+                availableYears={availableYears}
+                filters={filters}
+                onApplyFilters={setFilters}
+            />
+          </div>
         );
+      }
 
       case 'patents':
         return (
@@ -164,7 +207,6 @@ export const ClientDetailCard: React.FC<ClientDetailCardProps> = ({
                 </div>
             </div>
         );
-
       default:
         return null;
     }
@@ -194,7 +236,7 @@ export const ClientDetailCard: React.FC<ClientDetailCardProps> = ({
         
         <nav className="mt-4 flex space-x-2 border-b border-slate-200 -mx-6 px-6 overflow-x-auto">
           <button className={getTabClassName('requisites')} onClick={() => setActiveTab('requisites')}>Реквизиты</button>
-          <button className={getTabClassName('tasks')} onClick={() => setActiveTab('tasks')}>Задачи ({tasks.length})</button>
+          <button className={getTabClassName('tasks')} onClick={() => setActiveTab('tasks')}>Задачи ({filteredTasks.length})</button>
           <button className={getTabClassName('notes')} onClick={() => setActiveTab('notes')}>Заметки ({legalEntity.notes?.length || 0})</button>
           <button className={getTabClassName('patents')} onClick={() => setActiveTab('patents')}>Патенты ({legalEntity.patents?.length || 0})</button>
           <button className={getTabClassName('credentials')} onClick={() => setActiveTab('credentials')}>Учетные данные ({legalEntity.credentials?.length || 0})</button>

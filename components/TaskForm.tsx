@@ -1,10 +1,8 @@
-// components/TaskForm.tsx
+// src/components/TaskForm.tsx
 
-import React, { useState } from 'react';
-// <<< ИЗМЕНЕНО: Импортируем LegalEntity вместо Client >>>
+import React, { useState, useEffect } from 'react'; // ИЗМЕНЕНИЕ: Добавили useEffect
 import { Task, LegalEntity, TaskDueDateRule, RepeatFrequency, ReminderSetting } from '../types';
 
-// <<< ИЗМЕНЕНО: Пропсы теперь принимают legalEntities >>>
 interface TaskFormProps {
     legalEntities: LegalEntity[];
     onSave: (task: Omit<Task, 'id' | 'status' | 'isAutomatic' | 'seriesId'>) => void;
@@ -13,7 +11,6 @@ interface TaskFormProps {
     defaultDate: Date | null;
 }
 
-// <<< ИЗМЕНЕНО: Тип для состояния формы теперь использует legalEntityId >>>
 type FormData = {
     title: string;
     description: string;
@@ -21,12 +18,16 @@ type FormData = {
     dueTime: string;
     showTime: boolean;
     dueDateRule: TaskDueDateRule;
-    legalEntityId: string; // Вместо clientIds: string[]
+    legalEntityId: string;
     repeat: RepeatFrequency;
     reminder: ReminderSetting;
 };
 
 const toInputDateString = (date: Date): string => {
+    if (!(date instanceof Date) || isNaN(date.getTime())) {
+        // Защита от невалидной даты. Вернем сегодняшнюю.
+        date = new Date();
+    }
     const year = date.getFullYear();
     const month = (date.getMonth() + 1).toString().padStart(2, '0');
     const day = date.getDate().toString().padStart(2, '0');
@@ -38,11 +39,11 @@ const getMaxDateString = (): string => {
     return `${maxYear}-12-31`;
 };
 
-
 export const TaskForm: React.FC<TaskFormProps> = ({ legalEntities, onSave, onCancel, taskToEdit, defaultDate }) => {
     
     const getInitialState = (): FormData => {
-        const initialDate = taskToEdit ? new Date(taskToEdit.dueDate) : (defaultDate || new Date());
+        // Эта функция теперь всегда будет получать правильные данные
+        const initialDate = taskToEdit?.dueDate ? new Date(taskToEdit.dueDate) : (defaultDate || new Date());
         return {
             title: taskToEdit?.title || '',
             description: taskToEdit?.description || '',
@@ -50,7 +51,6 @@ export const TaskForm: React.FC<TaskFormProps> = ({ legalEntities, onSave, onCan
             dueTime: taskToEdit?.dueTime || '',
             showTime: !!taskToEdit?.dueTime,
             dueDateRule: taskToEdit?.dueDateRule || TaskDueDateRule.NextBusinessDay,
-            // <<< ИЗМЕНЕНО: Используем legalEntityId >>>
             legalEntityId: taskToEdit?.legalEntityId || '',
             repeat: taskToEdit?.repeat || RepeatFrequency.None,
             reminder: taskToEdit?.reminder || ReminderSetting.OneDay,
@@ -59,6 +59,14 @@ export const TaskForm: React.FC<TaskFormProps> = ({ legalEntities, onSave, onCan
     
     const [formData, setFormData] = useState<FormData>(getInitialState());
     const [error, setError] = useState<string | null>(null);
+
+    // === КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ ===
+    // Этот хук будет следить за изменениями taskToEdit.
+    // Если он изменился (т.е. мы пытаемся открыть форму),
+    // то внутреннее состояние formData будет принудительно обновлено.
+    useEffect(() => {
+        setFormData(getInitialState());
+    }, [taskToEdit, defaultDate]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         if (error) setError(null);
@@ -75,8 +83,6 @@ export const TaskForm: React.FC<TaskFormProps> = ({ legalEntities, onSave, onCan
         }
     };
 
-    // <<< УДАЛЕНО: Сложные обработчики handleClientChange, addClientSelector, removeClientSelector больше не нужны >>>
-
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         setError(null);
@@ -92,7 +98,6 @@ export const TaskForm: React.FC<TaskFormProps> = ({ legalEntities, onSave, onCan
             return;
         }
         
-        // <<< ИЗМЕНЕНО: onSave теперь передает один legalEntityId >>>
         onSave({
             title: formData.title,
             description: formData.description,
@@ -145,8 +150,7 @@ export const TaskForm: React.FC<TaskFormProps> = ({ legalEntities, onSave, onCan
                     <input type="time" name="dueTime" value={formData.dueTime} onChange={handleChange} className="ml-4 px-3 py-1 bg-white border border-slate-300 rounded-md shadow-sm text-slate-900" />
                 )}
             </div>
-
-            {/* <<< ИЗМЕНЕНО: Весь блок выбора клиента заменен на один простой select >>> */}
+            
             <div>
                 <label htmlFor="legalEntityId" className="block text-sm font-medium text-slate-700">Клиент</label>
                 <select name="legalEntityId" id="legalEntityId" value={formData.legalEntityId} onChange={handleChange} className="mt-1 block w-full pl-3 pr-10 py-2 text-base bg-white border border-slate-300 rounded-md text-slate-900">
