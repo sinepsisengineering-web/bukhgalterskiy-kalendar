@@ -44,6 +44,7 @@
       "electron.cjs",
       "preload.js"
     ],
+   
     "directories": {
       "output": "release"
     },

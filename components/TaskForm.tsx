@@ -1,6 +1,6 @@
-// src/components/TaskForm.tsx
+// components/TaskForm.tsx
 
-import React, { useState, useEffect } from 'react'; // ИЗМЕНЕНИЕ: Добавили useEffect
+import React, { useState, useEffect } from 'react';
 import { Task, LegalEntity, TaskDueDateRule, RepeatFrequency, ReminderSetting } from '../types';
 
 interface TaskFormProps {
@@ -25,7 +25,6 @@ type FormData = {
 
 const toInputDateString = (date: Date): string => {
     if (!(date instanceof Date) || isNaN(date.getTime())) {
-        // Защита от невалидной даты. Вернем сегодняшнюю.
         date = new Date();
     }
     const year = date.getFullYear();
@@ -42,7 +41,6 @@ const getMaxDateString = (): string => {
 export const TaskForm: React.FC<TaskFormProps> = ({ legalEntities, onSave, onCancel, taskToEdit, defaultDate }) => {
     
     const getInitialState = (): FormData => {
-        // Эта функция теперь всегда будет получать правильные данные
         const initialDate = taskToEdit?.dueDate ? new Date(taskToEdit.dueDate) : (defaultDate || new Date());
         return {
             title: taskToEdit?.title || '',
@@ -53,17 +51,13 @@ export const TaskForm: React.FC<TaskFormProps> = ({ legalEntities, onSave, onCan
             dueDateRule: taskToEdit?.dueDateRule || TaskDueDateRule.NextBusinessDay,
             legalEntityId: taskToEdit?.legalEntityId || '',
             repeat: taskToEdit?.repeat || RepeatFrequency.None,
-            reminder: taskToEdit?.reminder || ReminderSetting.OneDay,
+            reminder: taskToEdit?.reminder || ReminderSetting.ThreeDays,
         };
     };
     
     const [formData, setFormData] = useState<FormData>(getInitialState());
     const [error, setError] = useState<string | null>(null);
 
-    // === КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ ===
-    // Этот хук будет следить за изменениями taskToEdit.
-    // Если он изменился (т.е. мы пытаемся открыть форму),
-    // то внутреннее состояние formData будет принудительно обновлено.
     useEffect(() => {
         setFormData(getInitialState());
     }, [taskToEdit, defaultDate]);
@@ -178,15 +172,16 @@ export const TaskForm: React.FC<TaskFormProps> = ({ legalEntities, onSave, onCan
                 <div>
                     <label htmlFor="reminder" className="block text-sm font-medium text-slate-700">Напомнить</label>
                     <select name="reminder" id="reminder" value={formData.reminder} onChange={handleChange} className="mt-1 block w-full pl-3 pr-10 py-2 text-base bg-white border border-slate-300 rounded-md text-slate-900">
-                       <option value={ReminderSetting.None}>Никогда</option>
                        <option value={ReminderSetting.OneHour}>За 1 час</option>
                        <option value={ReminderSetting.OneDay}>За 1 день</option>
+                       <option value={ReminderSetting.ThreeDays}>За 3 дня</option> 
                        <option value={ReminderSetting.OneWeek}>За 1 неделю</option>
                     </select>
                 </div>
             </div>
 
             <div className="pt-4 flex justify-end gap-4">
+                {/* --- ВОТ ИСПРАВЛЕННАЯ СТРОКА --- */}
                 <button type="button" onClick={onCancel} className="px-4 py-2 text-sm font-semibold text-slate-700 bg-white border border-slate-300 rounded-md hover:bg-slate-50">Отмена</button>
                 <button type="submit" className="px-4 py-2 text-sm font-semibold text-white bg-indigo-600 border border-transparent rounded-md hover:bg-indigo-700">Сохранить</button>
             </div>

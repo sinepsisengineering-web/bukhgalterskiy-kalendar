@@ -1,24 +1,21 @@
 // electron.cjs
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, Notification } = require('electron');
 const path = require('path');
 const { autoUpdater } = require('electron-updater');
-
-// ИЗМЕНЕНИЕ 1: Добавляем electron-log
 const log = require('electron-log');
 
 const isDev = !app.isPackaged;
 let win;
 
-/* --- ИЗМЕНЕНИЕ 2: Секция настройки логирования --- */
+/* --- Секция настройки логирования --- */
 log.transports.file.resolvePath = () => path.join(app.getPath('userData'), 'logs/main.log');
 log.transports.file.level = "info";
 autoUpdater.logger = log;
 log.info('Приложение запускается...');
-/* --- Конец секции --- */
 
 
 const sendUpdateMessage = (message) => {
-  log.info(`Отправка сообщения в UI: ${JSON.stringify(message)}`); // Добавляем логирование сообщений
+  log.info(`Отправка сообщения в UI: ${JSON.stringify(message)}`);
   if (win) {
     win.webContents.send('update-message', message);
   }
@@ -44,17 +41,15 @@ function createWindow() {
 app.whenReady().then(() => {
   createWindow();
   
-  // ИЗМЕНЕНИЕ 3: Запускаем проверку обновлений сразу после запуска (для теста)
   if (!isDev) {
     setTimeout(() => {
         log.info('Запуск автоматической проверки обновлений...');
         autoUpdater.checkForUpdates();
-    }, 5000); // Небольшая задержка, чтобы окно успело появиться
+    }, 5000);
   }
 });
 
 /* --- Секция логики обновлений --- */
-
 ipcMain.handle('get-app-version', () => app.getVersion());
 
 ipcMain.on('check-for-updates', () => {
@@ -81,6 +76,24 @@ autoUpdater.on('download-progress', (progressInfo) => {
   }
 });
 autoUpdater.on('update-downloaded', () => sendUpdateMessage({ status: 'downloaded', text: 'Обновление скачано и готово к установке.' }));
+
+
+/* --- Секция Уведомлений (упрощенная) --- */
+ipcMain.on('show-notification', (event, { title, body }) => {
+  if (!Notification.isSupported()) {
+    return;
+  }
+  
+  const notification = new Notification({
+    title: title,
+    body: body,
+    // Мы не указываем свойство 'sound',
+    // чтобы использовался звук по умолчанию
+  });
+
+  notification.show();
+});
+/* --- Конец секции --- */
 
 
 /* --- Стандартная секция для окон --- */

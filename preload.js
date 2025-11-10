@@ -8,6 +8,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Отправка команд
   checkUpdates: () => ipcRenderer.send('check-for-updates'),
   restartApp: () => ipcRenderer.send('restart_app'),
+  // НОВАЯ ФУНКЦИЯ: для отправки уведомлений
+  showNotification: (title, body) => ipcRenderer.send('show-notification', { title, body }),
 
   // Прослушивание событий
   // ВАЖНО: Мы теперь возвращаем функцию для отписки!

@@ -1,23 +1,26 @@
 {
   "compilerOptions": {
     "target": "ESNext",
-    "useDefineForClassFields": true,
+    "useDefineForClassFields": true, 
     "lib": ["DOM", "DOM.Iterable", "ESNext"],
     "allowJs": false,
     "skipLibCheck": true,
-    "esModuleInterop": true, // ИЗМЕНЕНИЕ 1: Рекомендуется установить в true для лучшей совместимости
+    "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
     "strict": true,
     "forceConsistentCasingInFileNames": true,
     "module": "ESNext",
-    "moduleResolution": "node", // ИЗМЕНЕНИЕ 2: Меняем на более стабильный режим
+    "moduleResolution": "node",
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
     "jsx": "react-jsx"
   },
-  // ИЗМЕНЕНИЕ 3: Явно указываем, какие файлы включать
-  "include": ["**/*.ts", "**/*.tsx"],
-  "exclude": ["node_modules"], // Явно исключаем node_modules
+  "include": [
+    "renderer.d.ts",
+    "**/*.ts",
+    "**/*.tsx"
+  ],
+  "exclude": ["node_modules"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

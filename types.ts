@@ -1,4 +1,4 @@
-// src/types.ts
+// types.ts
 
 export enum TaxSystem {
   OSNO = 'ОСНО',
@@ -30,17 +30,12 @@ export interface Patent {
   autoRenew: boolean;
 }
 
-// <<< ДОБАВЛЕНО: Новый интерфейс для отдельной заметки >>>
 export interface Note {
   id: string;
   text: string;
   createdAt: Date;
 }
 
-/**
- * LegalEntity представляет конкретное юрлицо или ИП.
- * Это основная сущность для представления клиента в приложении.
- */
 export interface LegalEntity {
   id: string;
   legalForm: LegalForm;
@@ -58,7 +53,6 @@ export interface LegalEntity {
   isNdsPayer: boolean;
   ndsValue?: string;
   hasEmployees: boolean;
-  // <<< ИЗМЕНЕНО: Тип поля notes изменен со строки на массив объектов Note >>>
   notes?: Note[]; 
   credentials: Credential[];
   patents: Patent[];
@@ -66,7 +60,7 @@ export interface LegalEntity {
 }
 
 export enum TaskStatus {
-  Upcoming = 'Предстоящая',      // Был InProgress
+  Upcoming = 'Предстоящая',
   DueSoon = 'Скоро срок',
   DueToday = 'Срок сегодня',     
   Overdue = 'Просрочена',
@@ -89,12 +83,15 @@ export enum RepeatFrequency {
   Yearly = 'yearly',
 }
 
+// --- ИЗМЕНЕНИЯ ЗДЕСЬ ---
 export enum ReminderSetting {
-    None = 'none',
+    // None = 'none', // Убираем эту опцию
     OneHour = '1h',
     OneDay = '1d',
+    ThreeDays = '3d', // <-- ДОБАВЛЕНО
     OneWeek = '1w',
 }
+// --- КОНЕЦ ИЗМЕНЕНИЙ ---
 
 export interface Task {
   id: string;
