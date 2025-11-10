@@ -1,4 +1,4 @@
-// App.tsx
+// src/App.tsx
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Sidebar } from './components/Sidebar';
@@ -13,7 +13,7 @@ import { ConfirmationModal } from './components/ConfirmationModal';
 import { TasksListView } from './components/TasksListView';
 import { ArchiveView } from './components/ArchiveView';
 import { SettingsView } from './components/SettingsView';
-import { LegalEntity } from './types';
+import { LegalEntity, Task, Note } from './types';
 import { DUMMY_CLIENTS } from './dummy-data';
 import { useTasks } from './hooks/useTasks';
 
@@ -27,64 +27,60 @@ interface ConfirmationProps {
     confirmButtonClass?: string;
 }
 
-const parseLegalEntityDates = (le: any): LegalEntity => ({
-    ...le,
-    ogrnDate: le.ogrnDate ? new Date(le.ogrnDate) : undefined,
-    patents: le.patents ? le.patents.map((p: any) => ({ ...p, startDate: new Date(p.startDate), endDate: new Date(p.endDate) })) : []
-});
+const parseLegalEntity = (le: any): LegalEntity => {
+    let migratedNotes: Note[] = [];
+    if (typeof le.notes === 'string' && le.notes.trim() !== '') {
+        migratedNotes = [{
+            id: `note-${Date.now()}-${Math.random()}`,
+            text: le.notes,
+            createdAt: new Date(),
+        }];
+    } else if (Array.isArray(le.notes)) {
+        migratedNotes = le.notes.map((note: any) => ({
+            ...note,
+            createdAt: new Date(note.createdAt),
+        }));
+    }
+
+    return {
+        ...le,
+        ogrnDate: le.ogrnDate ? new Date(le.ogrnDate) : undefined,
+        patents: le.patents ? le.patents.map((p: any) => ({ ...p, startDate: new Date(p.startDate), endDate: new Date(p.endDate) })) : [],
+        notes: migratedNotes,
+    };
+};
 
 const App: React.FC = () => {
     const [legalEntities, setLegalEntities] = useState<LegalEntity[]>(() => {
         try {
             const savedLegalEntities = localStorage.getItem('legalEntities');
             if (savedLegalEntities) {
-                const parsed = JSON.parse(savedLegalEntities);
-                return parsed.map(parseLegalEntityDates);
+                return JSON.parse(savedLegalEntities).map(parseLegalEntity);
             }
-
             const savedClients = localStorage.getItem('clients');
             if (savedClients) {
-                console.log("Migrating old 'clients' data structure to 'legalEntities'...");
                 const oldClients: any[] = JSON.parse(savedClients);
                 const migratedEntities: LegalEntity[] = oldClients.flatMap(client =>
-                    (client.legalEntities || []).map((le: any) => parseLegalEntityDates({ // <<< ИСПРАВЛЕНО: Добавлен тип (le: any)
-                        ...le,
-                        isArchived: client.isArchived || false,
-                    }))
+                    (client.legalEntities || []).map((le: any) => parseLegalEntity({ ...le, isArchived: client.isArchived || false, }))
                 );
                 localStorage.setItem('legalEntities', JSON.stringify(migratedEntities));
                 localStorage.removeItem('clients');
                 return migratedEntities;
             }
-
-            return DUMMY_CLIENTS.flatMap(client =>
-                client.legalEntities.map((le: any) => ({ // <<< ИСПРАВЛЕНО: Добавлен тип (le: any)
-                    ...le,
-                    isArchived: client.isArchived || false,
-                }))
-            );
+            return DUMMY_CLIENTS.flatMap(client => client.legalEntities.map((le: any) => parseLegalEntity({ ...le, isArchived: client.isArchived || false, })));
         } catch (error) {
             console.error("Failed to load or migrate data from localStorage", error);
-            return DUMMY_CLIENTS.flatMap(client =>
-                client.legalEntities.map((le: any) => ({ // <<< ИСПРАВЛЕНО: Добавлен тип (le: any)
-                    ...le,
-                    isArchived: client.isArchived || false,
-                }))
-            );
+            return DUMMY_CLIENTS.flatMap(client => client.legalEntities.map((le: any) => parseLegalEntity({ ...le, isArchived: client.isArchived || false, })));
         }
     });
 
     const [selectedLegalEntity, setSelectedLegalEntity] = useState<LegalEntity | null>(null);
     const [tasksViewKey, setTasksViewKey] = useState(0);
-    const [activeView, setActiveView] = useState<View>('calendar'); // <<< ИСПРАВЛЕНО: Возвращена строка состояния
-    
+    const [activeView, setActiveView] = useState<View>('calendar');
     const [isLegalEntityModalOpen, setIsLegalEntityModalOpen] = useState(false);
     const [legalEntityToEdit, setLegalEntityToEdit] = useState<LegalEntity | null>(null);
-    
     const [isConfirmationModalOpen, setIsConfirmationModalOpen] = useState(false);
-    const [confirmationProps, setConfirmationProps] = useState<ConfirmationProps>({
-        title: '', message: '', onConfirm: () => {},
-    });
+    const [confirmationProps, setConfirmationProps] = useState<ConfirmationProps>({ title: '', message: '', onConfirm: () => {}, });
 
     const { activeLegalEntities, archivedLegalEntities } = useMemo(() => {
         const active: LegalEntity[] = [];
@@ -93,31 +89,13 @@ const App: React.FC = () => {
         return { activeLegalEntities: active, archivedLegalEntities: archived };
     }, [legalEntities]);
 
-    const legalEntityMap = useMemo(() => {
-        const map = new Map<string, LegalEntity>();
-        legalEntities.forEach(le => {
-            map.set(le.id, le);
-        });
-        return map;
-    }, [legalEntities]);
+    const legalEntityMap = useMemo(() => new Map(legalEntities.map(le => [le.id, le])), [legalEntities]);
     
     const {
-        tasks,
-        isTaskModalOpen,
-        setIsTaskModalOpen,
-        taskToEdit,
-        setTaskToEdit,
-        taskModalDefaultDate,
-        isTaskDetailModalOpen,
-        setIsTaskDetailModalOpen,
-        tasksForDetailView,
-        handleSaveTask,
-        handleOpenTaskForm,
-        handleOpenTaskDetail,
-        handleToggleComplete,
-        handleEditTaskFromDetail,
-        handleDeleteTask,
-        handleBulkComplete,
+        tasks, isTaskModalOpen, setIsTaskModalOpen, taskToEdit, setTaskToEdit, taskModalDefaultDate,
+        isTaskDetailModalOpen, setIsTaskDetailModalOpen, tasksForDetailView,
+        handleSaveTask, handleOpenTaskForm, handleOpenTaskDetail, handleToggleComplete,
+        handleEditTaskFromDetail, handleDeleteTask, handleBulkComplete,
     } = useTasks(activeLegalEntities, legalEntityMap);
 
     useEffect(() => {
@@ -125,15 +103,38 @@ const App: React.FC = () => {
     }, [legalEntities]);
     
     const handleSaveLegalEntity = (entityData: LegalEntity) => {
-        const updatedEntities = legalEntities.find(le => le.id === entityData.id)
-          ? legalEntities.map(le => le.id === entityData.id ? entityData : le)
-          : [...legalEntities, { ...entityData, id: entityData.id || `le-${Date.now()}` }];
+        const entityExists = entityData.id && legalEntities.some(le => le.id === entityData.id);
+        const updatedEntities = entityExists
+            ? legalEntities.map(le => le.id === entityData.id ? entityData : le)
+            : [...legalEntities, { ...entityData, id: `le-${Date.now()}-${Math.random()}` }];
         setLegalEntities(updatedEntities);
         if (selectedLegalEntity && selectedLegalEntity.id === entityData.id) {
             setSelectedLegalEntity(entityData);
         }
         setIsLegalEntityModalOpen(false);
         setLegalEntityToEdit(null);
+    };
+
+    const handleAddNote = (legalEntityId: string, noteText: string) => {
+        const newNote: Note = {
+            id: `note-${Date.now()}-${Math.random()}`,
+            text: noteText,
+            createdAt: new Date(),
+        };
+        const updatedEntities = legalEntities.map(le => {
+            if (le.id === legalEntityId) {
+                const updatedNotes = le.notes ? [...le.notes, newNote] : [newNote];
+                return { ...le, notes: updatedNotes };
+            }
+            return le;
+        });
+        setLegalEntities(updatedEntities);
+        if (selectedLegalEntity && selectedLegalEntity.id === legalEntityId) {
+            const updatedSelectedEntity = updatedEntities.find(le => le.id === legalEntityId);
+            if (updatedSelectedEntity) {
+                setSelectedLegalEntity(updatedSelectedEntity);
+            }
+        }
     };
     
     const handleArchiveLegalEntity = (entity: LegalEntity) => {
@@ -146,18 +147,16 @@ const App: React.FC = () => {
     };
 
     const handleDeleteLegalEntity = (entity: LegalEntity) => {
-        setLegalEntities(prev => prev.filter(le => le.id !== entity.id));
-        if (selectedLegalEntity?.id === entity.id) setSelectedLegalEntity(null);
+        if (window.confirm(`Вы уверены, что хотите удалить клиента "${entity.name}"? Это действие необратимо.`)) {
+            setLegalEntities(prev => prev.filter(le => le.id !== entity.id));
+            if (selectedLegalEntity?.id === entity.id) setSelectedLegalEntity(null);
+        }
     };
     
-    const handlePermanentDeleteClient = (clientId: string) => { /* ... */ };
-
     const handleOpenLegalEntityForm = (entity: LegalEntity | null = null) => {
-        setLegalEntityToEdit(entity);
+        setLegalEntityToEdit(entity ? { ...entity } : null);
         setIsLegalEntityModalOpen(true);
     };
-
-    const handleClearData = () => { /* ... */ };
 
     const renderContent = () => {
         if (selectedLegalEntity && activeView === 'clients') {
@@ -169,14 +168,22 @@ const App: React.FC = () => {
                 onEdit={handleOpenLegalEntityForm}
                 onArchive={handleArchiveLegalEntity}
                 onDelete={handleDeleteLegalEntity}
+                onAddTask={(defaultValues) => {
+                    setTaskToEdit(defaultValues as Task);
+                    setIsTaskModalOpen(true);
+                }}
+                onOpenTaskDetail={handleOpenTaskDetail}
+                onBulkComplete={handleBulkComplete}
+                onDeleteTask={handleDeleteTask}
+                onAddNote={handleAddNote}
             />;
         }
         switch(activeView) {
             case 'calendar': return <Calendar tasks={tasks} legalEntities={activeLegalEntities} onUpdateTaskStatus={() => {}} onAddTask={handleOpenTaskForm} onOpenDetail={handleOpenTaskDetail} onDeleteTask={handleDeleteTask} />;
             case 'tasks': return <TasksListView key={tasksViewKey} tasks={tasks} legalEntities={activeLegalEntities} onOpenDetail={handleOpenTaskDetail} onBulkUpdate={handleBulkComplete} onDeleteTask={handleDeleteTask} />;
             case 'clients': return <ClientList legalEntities={activeLegalEntities} onSelectLegalEntity={setSelectedLegalEntity} onAddLegalEntity={() => handleOpenLegalEntityForm(null)} />;
-            case 'archive': return <ArchiveView archivedLegalEntities={archivedLegalEntities} onUnarchive={handleUnarchiveLegalEntity} onDelete={handlePermanentDeleteClient} />;
-            case 'settings': return <SettingsView onClearData={handleClearData} />;
+            case 'archive': return <ArchiveView archivedLegalEntities={archivedLegalEntities} onUnarchive={handleUnarchiveLegalEntity} onDelete={() => {}} />;
+            case 'settings': return <SettingsView onClearData={() => {}} />;
             default: return null;
         }
     };
@@ -204,11 +211,7 @@ const App: React.FC = () => {
                 onDelete={handleDeleteTask} 
                 onSelectLegalEntity={(entity: LegalEntity) => { 
                     const le = legalEntities.find(le => le.id === entity.id); 
-                    if (le) { 
-                        setIsTaskDetailModalOpen(false); 
-                        setSelectedLegalEntity(le); 
-                        setActiveView('clients'); 
-                    } 
+                    if (le) { setIsTaskDetailModalOpen(false); setSelectedLegalEntity(le); setActiveView('clients'); } 
                 }} 
             />
 

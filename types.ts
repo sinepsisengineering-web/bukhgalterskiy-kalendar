@@ -1,4 +1,4 @@
-// types.ts
+// src/types.ts
 
 export enum TaxSystem {
   OSNO = 'ОСНО',
@@ -30,6 +30,13 @@ export interface Patent {
   autoRenew: boolean;
 }
 
+// <<< ДОБАВЛЕНО: Новый интерфейс для отдельной заметки >>>
+export interface Note {
+  id: string;
+  text: string;
+  createdAt: Date;
+}
+
 /**
  * LegalEntity представляет конкретное юрлицо или ИП.
  * Это основная сущность для представления клиента в приложении.
@@ -37,7 +44,7 @@ export interface Patent {
 export interface LegalEntity {
   id: string;
   legalForm: LegalForm;
-  name: string; // Наименование юрлица (без ООО/ИП)
+  name: string;
   inn: string;
   kpp?: string;
   ogrn: string;
@@ -51,10 +58,11 @@ export interface LegalEntity {
   isNdsPayer: boolean;
   ndsValue?: string;
   hasEmployees: boolean;
-  notes?: string;
+  // <<< ИЗМЕНЕНО: Тип поля notes изменен со строки на массив объектов Note >>>
+  notes?: Note[]; 
   credentials: Credential[];
   patents: Patent[];
-  isArchived?: boolean; // Свойство для архивации
+  isArchived?: boolean;
 }
 
 export enum TaskStatus {

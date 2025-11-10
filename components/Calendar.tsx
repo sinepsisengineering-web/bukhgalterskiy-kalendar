@@ -1,7 +1,6 @@
 // components/Calendar.tsx
 
 import React, { useState, useMemo } from 'react';
-// <<< ИЗМЕНЕНО: Импортируем LegalEntity вместо Client >>>
 import { Task, TaskStatus, LegalEntity } from '../types';
 import { TaskItem } from './TaskItem';
 import { TASK_STATUS_STYLES } from '../constants';
@@ -22,13 +21,12 @@ const isWeekend = (date: Date) => {
 const isHoliday = (date: Date) => RUSSIAN_HOLIDAYS.has(toISODateString(date));
 // --- Конец утилит ---
 
-// <<< ИЗМЕНЕНО: Пропсы обновлены >>>
 interface CalendarProps {
   tasks: Task[];
   legalEntities: LegalEntity[];
   onUpdateTaskStatus: (taskId: string, status: TaskStatus) => void;
   onAddTask: (date: Date) => void;
-  onOpenDetail: (tasks: Task[]) => void;
+  onOpenDetail: (tasks: Task[], date: Date) => void; // Обновим, чтобы соответствовать App.tsx
   onDeleteTask: (taskId: string) => void;
 }
 
@@ -41,20 +39,17 @@ const AddTaskButton: React.FC<{onClick?: () => void}> = ({onClick}) => (
     </button>
 );
 
-// <<< ИЗМЕНЕНО: Пропсы обновлены >>>
 interface DayViewProps {
     tasks: Task[];
     legalEntities: LegalEntity[];
     currentDate: Date;
     onAddTask: (date: Date) => void;
-    onOpenDetail: (tasks: Task[]) => void;
+    onOpenDetail: (tasks: Task[], date: Date) => void;
     onDeleteTask: (taskId: string) => void;
 }
 
-const DayView: React.FC<DayViewProps> = ({ tasks, legalEntities, currentDate, onAddTask, onOpenDetail }) => {
+const DayView: React.FC<DayViewProps> = ({ tasks, legalEntities, currentDate, onAddTask, onOpenDetail, onDeleteTask }) => {
   const tasksForDay = useMemo(() => tasks.filter(t => new Date(t.dueDate).toDateString() === currentDate.toDateString()), [tasks, currentDate]);
-  
-  // <<< ИЗМЕНЕНО: Создаем Map для быстрого поиска юр. лица по ID >>>
   const legalEntityMap = useMemo(() => new Map(legalEntities.map(le => [le.id, le])), [legalEntities]);
 
   return (
@@ -67,7 +62,6 @@ const DayView: React.FC<DayViewProps> = ({ tasks, legalEntities, currentDate, on
       </div>
       <div className="space-y-3 max-h-[65vh] overflow-y-auto pr-2">
         {tasksForDay.length > 0 ? tasksForDay.map(task => {
-          // <<< ИЗМЕНЕНО: Получаем юр. лицо из Map и формируем имя >>>
           const legalEntity = legalEntityMap.get(task.legalEntityId);
           const clientName = legalEntity ? `${legalEntity.legalForm} «${legalEntity.name}»` : 'Юр. лицо не найдено';
           
@@ -76,9 +70,10 @@ const DayView: React.FC<DayViewProps> = ({ tasks, legalEntities, currentDate, on
               key={task.id}
               task={task}
               clientName={clientName}
-              onOpenDetail={() => onOpenDetail([task])}
+              onOpenDetail={() => onOpenDetail([task], new Date(task.dueDate))}
               isSelected={false}
               onTaskSelect={() => {}}
+              onDeleteTask={onDeleteTask}
             />
           )
         }) : <p className="text-center text-slate-500 py-8">На этот день задач нет.</p>}
@@ -87,8 +82,7 @@ const DayView: React.FC<DayViewProps> = ({ tasks, legalEntities, currentDate, on
   );
 };
 
-// <<< ИЗМЕНЕНО: Пропсы обновлены >>>
-const WeekView: React.FC<{ tasks: Task[]; legalEntities: LegalEntity[]; currentDate: Date; onSelectDate: (date: Date) => void; onAddTask: (date: Date) => void; onOpenDetail: (tasks: Task[]) => void; }> = ({ tasks, currentDate, onSelectDate, onAddTask, onOpenDetail }) => {
+const WeekView: React.FC<{ tasks: Task[]; legalEntities: LegalEntity[]; currentDate: Date; onSelectDate: (date: Date) => void; onAddTask: (date: Date) => void; onOpenDetail: (tasks: Task[], date: Date) => void; }> = ({ tasks, currentDate, onSelectDate, onAddTask, onOpenDetail }) => {
     const today = new Date(); today.setHours(0,0,0,0);
     const startOfWeek = new Date(currentDate);
     const day = startOfWeek.getDay();
@@ -120,7 +114,7 @@ const WeekView: React.FC<{ tasks: Task[]; legalEntities: LegalEntity[]; currentD
                             </div>
                             <div className="p-1 sm:p-2 space-y-1 sm:space-y-2 flex-1 min-h-[120px] overflow-y-auto">
                                 {tasksForDay.map(task => (
-                                    <div key={task.id} onClick={() => onOpenDetail([task])} className={`text-xs p-1 rounded cursor-pointer truncate ${task.status === TaskStatus.Completed ? 'bg-green-100 text-green-700 line-through' : `${TASK_STATUS_STYLES[task.status].bg} ${TASK_STATUS_STYLES[task.status].text}`}`} title={`${task.title}`}>
+                                    <div key={task.id} onClick={() => onOpenDetail([task], new Date(task.dueDate))} className={`text-xs p-1 rounded cursor-pointer truncate ${task.status === TaskStatus.Completed ? 'bg-green-100 text-green-700 line-through' : `${TASK_STATUS_STYLES[task.status].bg} ${TASK_STATUS_STYLES[task.status].text}`}`} title={`${task.title}`}>
                                         {task.title}
                                     </div>
                                 ))}
@@ -133,9 +127,7 @@ const WeekView: React.FC<{ tasks: Task[]; legalEntities: LegalEntity[]; currentD
     );
 };
 
-// <<< ИЗМЕНЕНО: Пропсы обновлены >>>
-const MonthView: React.FC<{ tasks: Task[]; legalEntities: LegalEntity[]; currentDate: Date; onSelectDate: (date: Date) => void; onAddTask: (date: Date) => void; onOpenDetail: (tasks: Task[]) => void; }> = ({ tasks, currentDate, onSelectDate, onAddTask, onOpenDetail }) => {
-    // ... остальной код MonthView без изменений ...
+const MonthView: React.FC<{ tasks: Task[]; legalEntities: LegalEntity[]; currentDate: Date; onSelectDate: (date: Date) => void; onAddTask: (date: Date) => void; onOpenDetail: (tasks: Task[], date: Date) => void; }> = ({ tasks, currentDate, onSelectDate, onAddTask, onOpenDetail }) => {
     const today = new Date(); today.setHours(0,0,0,0);
     const monthStart = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
     const monthEnd = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
@@ -196,7 +188,7 @@ const MonthView: React.FC<{ tasks: Task[]; legalEntities: LegalEntity[]; current
                                 return (
                                 <div 
                                     key={mainTask.seriesId || mainTask.id} 
-                                    onClick={(e) => {e.stopPropagation(); onOpenDetail(group);}} 
+                                    onClick={(e) => {e.stopPropagation(); onOpenDetail(group, new Date(mainTask.dueDate));}} 
                                     className={`text-xs px-1.5 py-0.5 rounded truncate relative flex items-center justify-between gap-1 ${isAllCompleted ? 'bg-green-100 text-green-700 line-through' : `${statusStyle.bg} ${statusStyle.text}`}`} 
                                     title={`${mainTask.title} (${isAllCompleted ? 'Выполнено' : `Невыполнено: ${uncompletedCount}`})`}>
                                         <span className="truncate flex-1">{mainTask.title}</span>
@@ -221,7 +213,6 @@ const MonthView: React.FC<{ tasks: Task[]; legalEntities: LegalEntity[]; current
 };
 
 const MiniMonthGrid: React.FC<{ year: number; month: number; tasks: Task[]; onSelectDate: (date: Date) => void; today: Date; onAddTask: (date: Date) => void; }> = ({ year, month, tasks, onSelectDate, today, onAddTask }) => {
-    // ... код MiniMonthGrid без изменений ...
     const monthStart = new Date(year, month, 1);
     const startDate = new Date(monthStart); startDate.setDate(startDate.getDate() - (startDate.getDay() === 0 ? 6 : startDate.getDay() - 1));
     const monthEnd = new Date(year, month + 1, 0);
@@ -261,7 +252,6 @@ const MiniMonthGrid: React.FC<{ year: number; month: number; tasks: Task[]; onSe
 };
 
 const QuarterView: React.FC<{ tasks: Task[]; currentDate: Date; onSelectDate: (date: Date) => void; onAddTask: (date: Date) => void; }> = ({ tasks, currentDate, onSelectDate, onAddTask }) => {
-    // ... код QuarterView без изменений ...
     const today = new Date(); today.setHours(0,0,0,0);
     const currentQuarter = Math.floor(currentDate.getMonth() / 3);
     const startMonth = currentQuarter * 3;
@@ -275,7 +265,6 @@ const QuarterView: React.FC<{ tasks: Task[]; currentDate: Date; onSelectDate: (d
 };
 
 const YearView: React.FC<{ tasks: Task[]; currentDate: Date; onSelectDate: (date: Date) => void; onAddTask: (date: Date) => void; }> = ({ tasks, currentDate, onSelectDate, onAddTask }) => {
-    // ... код YearView без изменений ...
     const today = new Date(); today.setHours(0,0,0,0);
     return (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-6 gap-y-8">
@@ -295,10 +284,29 @@ export const Calendar: React.FC<CalendarProps> = ({ tasks, legalEntities, onUpda
     setView('day');
   };
 
-  const handlePrev = () => { /* ... */ };
-  const handleNext = () => { /* ... */ };
+  const handlePrev = () => {
+    setCurrentDate(prevDate => {
+        const newDate = new Date(prevDate);
+        if (view === 'day') newDate.setDate(newDate.getDate() - 1);
+        else if (view === 'week') newDate.setDate(newDate.getDate() - 7);
+        else if (view === 'month') newDate.setMonth(newDate.getMonth() - 1);
+        else if (view === 'quarter') newDate.setMonth(newDate.getMonth() - 3);
+        else if (view === 'year') newDate.setFullYear(newDate.getFullYear() - 1);
+        return newDate;
+    });
+  };
+  const handleNext = () => {
+     setCurrentDate(prevDate => {
+        const newDate = new Date(prevDate);
+        if (view === 'day') newDate.setDate(newDate.getDate() + 1);
+        else if (view === 'week') newDate.setDate(newDate.getDate() + 7);
+        else if (view === 'month') newDate.setMonth(newDate.getMonth() + 1);
+        else if (view === 'quarter') newDate.setMonth(newDate.getMonth() + 3);
+        else if (view === 'year') newDate.setFullYear(newDate.getFullYear() + 1);
+        return newDate;
+    });
+  };
   const handleToday = () => setCurrentDate(new Date());
-  // ... остальной код Calendar без изменений ...
 
   const currentTitle = useMemo(() => {
     switch(view) {
@@ -355,7 +363,6 @@ export const Calendar: React.FC<CalendarProps> = ({ tasks, legalEntities, onUpda
         </div>
       </div>
       
-      {/* <<< ИЗМЕНЕНО: Передаем legalEntities вместо clients >>> */}
       {view === 'day' && <DayView tasks={tasks} legalEntities={legalEntities} currentDate={currentDate} onAddTask={onAddTask} onOpenDetail={onOpenDetail} onDeleteTask={onDeleteTask} />}
       {view === 'week' && <WeekView tasks={tasks} legalEntities={legalEntities} currentDate={currentDate} onSelectDate={handleSelectDate} onAddTask={onAddTask} onOpenDetail={onOpenDetail} />}
       {view === 'month' && <MonthView tasks={tasks} legalEntities={legalEntities} currentDate={currentDate} onSelectDate={handleSelectDate} onAddTask={onAddTask} onOpenDetail={onOpenDetail} />}

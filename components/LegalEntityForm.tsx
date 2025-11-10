@@ -12,12 +12,10 @@ const toInputDateString = (date?: Date | string): string => {
 };
 const getMaxDateString = (): string => `${new Date().getFullYear() + 10}-12-31`;
 
-
-// <<< ИЗМЕНЕНИЕ №1: onRemove теперь необязательный >>>
 interface LegalEntityFormProps {
   legalEntity: LegalEntity;
   onChange: (updatedLegalEntity: LegalEntity) => void;
-  onRemove?: () => void; // Сделали свойство необязательным
+  onRemove?: () => void;
 }
 
 export const LegalEntityForm: React.FC<LegalEntityFormProps> = ({ legalEntity, onChange, onRemove }) => {
@@ -80,18 +78,18 @@ export const LegalEntityForm: React.FC<LegalEntityFormProps> = ({ legalEntity, o
   };
   
   const handleCredentialChange = (index: number, field: keyof Credential, value: string) => {
-    const newCredentials = [...legalEntity.credentials];
+    const newCredentials = [...(legalEntity.credentials || [])]; // Защита от undefined
     newCredentials[index] = { ...newCredentials[index], [field]: value };
     onChange({ ...legalEntity, credentials: newCredentials });
   };
   
   const addCredential = () => {
     const newCredential: Credential = { id: `cred-${Date.now()}`, service: '', login: '', password: '' };
-    onChange({ ...legalEntity, credentials: [...legalEntity.credentials, newCredential] });
+    onChange({ ...legalEntity, credentials: [...(legalEntity.credentials || []), newCredential] });
   };
   
   const removeCredential = (index: number) => {
-    const newCredentials = legalEntity.credentials.filter((_, i) => i !== index);
+    const newCredentials = (legalEntity.credentials || []).filter((_, i) => i !== index);
     onChange({ ...legalEntity, credentials: newCredentials });
   };
 
@@ -101,7 +99,6 @@ export const LegalEntityForm: React.FC<LegalEntityFormProps> = ({ legalEntity, o
 
   return (
     <div className="space-y-6 p-6 border border-slate-200 rounded-lg bg-slate-50 relative shadow-sm">
-        {/* <<< ИЗМЕНЕНИЕ №2: Кнопка удаления отображается только если передан onRemove >>> */}
         {onRemove && (
             <button type="button" onClick={onRemove} className="absolute top-2 right-2 p-1 text-slate-400 hover:text-red-600 transition-colors" title="Удалить это юрлицо">
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
@@ -179,16 +176,11 @@ export const LegalEntityForm: React.FC<LegalEntityFormProps> = ({ legalEntity, o
           <button type="button" onClick={addPatent} className="mt-4 text-sm font-semibold text-indigo-600 hover:text-indigo-800">+ Добавить патент</button>
         </div>
        )}
-       
-       <div>
-         <label className="block text-sm font-medium text-slate-700">Заметки</label>
-         <textarea name="notes" value={legalEntity.notes || ''} onChange={handleChange} rows={3} className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md shadow-sm text-slate-900"></textarea>
-       </div>
 
       <div>
         <h3 className="text-lg font-medium text-slate-900 mb-2">Логины и пароли</h3>
         <div className="space-y-2">
-          {legalEntity.credentials.map((cred, index) => (
+          {(legalEntity.credentials || []).map((cred, index) => (
             <div key={cred.id} className="grid grid-cols-10 gap-2 items-center">
               <input type="text" placeholder="Сервис (ФНС, Госуслуги...)" value={cred.service} onChange={(e) => handleCredentialChange(index, 'service', e.target.value)} className="col-span-3 px-3 py-2 bg-white border border-slate-300 rounded-md text-slate-900"/>
               <input type="text" placeholder="Логин" value={cred.login} onChange={(e) => handleCredentialChange(index, 'login', e.target.value)} className="col-span-3 px-3 py-2 bg-white border border-slate-300 rounded-md text-slate-900"/>

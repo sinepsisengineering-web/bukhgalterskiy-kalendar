@@ -1,10 +1,11 @@
-// components/ClientDetailCard.tsx
+// src/components/ClientDetailCard.tsx
 
-import React from 'react';
-// <<< ИЗМЕНЕНО: Client больше не нужен, Task и TaskStatus могут понадобиться для отображения задач >>>
-import { Task, LegalEntity, TaskStatus } from '../types';
+import React, { useState } from 'react';
+import { LegalEntity, Task, Patent, Credential, Note } from '../types';
+import { TasksListView } from './TasksListView';
 
-// <<< ИЗМЕНЕНО: Интерфейс пропсов полностью переписан под LegalEntity >>>
+type DetailTab = 'requisites' | 'tasks' | 'patents' | 'credentials' | 'notes';
+
 interface ClientDetailCardProps {
   legalEntity: LegalEntity;
   tasks: Task[];
@@ -12,62 +13,195 @@ interface ClientDetailCardProps {
   onEdit: (entity: LegalEntity) => void;
   onArchive: (entity: LegalEntity) => void;
   onDelete: (entity: LegalEntity) => void;
-  // onSave убран, так как эта логика теперь полностью в App.tsx
+  onAddTask: (defaultValues: Partial<Task>) => void;
+  onOpenTaskDetail: (tasks: Task[], date: Date) => void;
+  onBulkComplete: (taskIds: string[]) => void;
+  onDeleteTask: (taskId: string) => void;
+  onAddNote: (legalEntityId: string, noteText: string) => void;
 }
 
-// <<< Этот компонент-хелпер остается без изменений, он нам пригодится >>>
 const DetailRow: React.FC<{ label: string; value?: string | React.ReactNode }> = ({ label, value }) => (
-    <div className="py-2 sm:grid sm:grid-cols-3 sm:gap-4">
+    <div className="py-3 sm:grid sm:grid-cols-3 sm:gap-4 border-t border-slate-200 first:border-t-0">
       <dt className="text-sm font-medium text-slate-500">{label}</dt>
-      <dd className="mt-1 text-sm text-slate-900 sm:mt-0 sm:col-span-2">{value || '-'}</dd>
+      <dd className="mt-1 text-sm text-slate-900 sm:mt-0 sm:col-span-2">{value || <span className="text-slate-400">-</span>}</dd>
     </div>
 );
 
-// <<< ИЗМЕНЕНО: Внутренний компонент LegalEntityDetails и модальное окно удалены >>>
+const AddNoteForm: React.FC<{ onAdd: (text: string) => void }> = ({ onAdd }) => {
+    const [text, setText] = useState('');
 
-// <<< ИЗМЕНЕНО: Компонент теперь называется ClientDetailCard, но работает с LegalEntity >>>
-export const ClientDetailCard: React.FC<ClientDetailCardProps> = ({ legalEntity, tasks, onClose, onEdit, onArchive, onDelete }) => {
-  // <<< ИЗМЕНЕНО: Считаем задачи для текущего юр. лица >>>
-  const overdueTasks = tasks.filter(t => t.status === TaskStatus.Overdue).length;
-  const dueSoonTasks = tasks.filter(t => t.status === TaskStatus.DueSoon).length;
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (text.trim()) {
+            onAdd(text.trim());
+            setText('');
+        }
+    };
+
+    return (
+        <form onSubmit={handleSubmit} className="mt-4 p-4 border-t border-slate-200">
+            <textarea
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                placeholder="Введите текст новой заметки..."
+                className="w-full p-2 border border-slate-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
+                rows={3}
+            />
+            <div className="flex justify-end mt-2">
+                <button
+                    type="submit"
+                    className="px-4 py-2 text-sm font-semibold text-white bg-indigo-600 border border-transparent rounded-md hover:bg-indigo-700 disabled:opacity-50"
+                    disabled={!text.trim()}
+                >
+                    Добавить заметку
+                </button>
+            </div>
+        </form>
+    );
+};
+
+
+export const ClientDetailCard: React.FC<ClientDetailCardProps> = ({ 
+  legalEntity, 
+  tasks, 
+  onClose, 
+  onEdit, 
+  onArchive, 
+  onDelete,
+  onAddTask,
+  onOpenTaskDetail,
+  onBulkComplete,
+  onDeleteTask,
+  onAddNote
+}) => {
+  const [activeTab, setActiveTab] = useState<DetailTab>('requisites');
+
+  const renderTabContent = () => {
+    switch (activeTab) {
+      case 'requisites':
+        return (
+          <div className="p-4 border border-slate-200 rounded-lg bg-slate-50 mt-4">
+              <dl>
+                  <DetailRow label="ИНН / КПП" value={`${legalEntity.inn}${legalEntity.kpp ? ` / ${legalEntity.kpp}` : ''}`} />
+                  <DetailRow label="ОГРН / ОГРНИП" value={legalEntity.ogrn} />
+                  <DetailRow label="Дата ОГРН" value={legalEntity.ogrnDate ? new Date(legalEntity.ogrnDate).toLocaleDateString('ru-RU') : undefined} />
+                  <DetailRow label="Система налогообложения" value={legalEntity.taxSystem} />
+                  <DetailRow label="Плательщик НДС" value={legalEntity.isNdsPayer ? `Да ${legalEntity.ndsValue ? `(${legalEntity.ndsValue})` : ''}`: 'Нет'} />
+                  <DetailRow label="Сотрудники" value={legalEntity.hasEmployees ? 'Есть' : 'Нет'} />
+                  <DetailRow label="Юридический адрес" value={legalEntity.legalAddress} />
+                  <DetailRow label="Фактический адрес" value={legalEntity.actualAddress} />
+                  <DetailRow label="Контактное лицо" value={legalEntity.contactPerson} />
+                  <DetailRow label="Телефон / Email" value={`${legalEntity.phone || ''} / ${legalEntity.email || ''}`} />
+              </dl>
+          </div>
+        );
+      
+      case 'tasks':
+        return (
+            <div className="h-full">
+              <TasksListView
+                tasks={tasks}
+                legalEntities={[legalEntity]} 
+                onOpenDetail={onOpenTaskDetail}
+                onBulkUpdate={onBulkComplete}
+                onDeleteTask={onDeleteTask}
+                customAddTaskButton={
+                  <button
+                    onClick={() => onAddTask({ legalEntityId: legalEntity.id })}
+                    className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors shadow"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" /></svg>
+                    Добавить задачу
+                  </button>
+                }
+              />
+            </div>
+        );
+
+      case 'patents':
+        return (
+            <div className="mt-4 space-y-3">
+                {legalEntity.patents?.length ? legalEntity.patents.map((patent: Patent, index) => (
+                    <div key={index} className="p-4 border rounded-lg bg-slate-50">
+                        <p className="font-semibold">{patent.name}</p>
+                        <p className="text-sm text-slate-600">Срок действия: {new Date(patent.startDate).toLocaleDateString()} - {new Date(patent.endDate).toLocaleDateString()}</p>
+                    </div>
+                )) : <p className="text-slate-500 text-center py-8">Патенты не добавлены.</p>}
+            </div>
+        );
+
+      case 'credentials':
+         return (
+            <div className="mt-4 space-y-3">
+                {legalEntity.credentials?.length ? legalEntity.credentials.map((cred: Credential, index) => (
+                    <div key={index} className="p-4 border rounded-lg bg-slate-50">
+                        <p className="font-semibold">{cred.service}</p>
+                        <p className="text-sm text-slate-600">Логин: {cred.login}</p>
+                    </div>
+                )) : <p className="text-slate-500 text-center py-8">Учетные данные не добавлены.</p>}
+            </div>
+        );
+
+      case 'notes':
+        return (
+            <div className="mt-4 flex flex-col h-full">
+                <div className="flex-grow overflow-y-auto pr-2 space-y-4">
+                    {legalEntity.notes && legalEntity.notes.length > 0 ? (
+                        [...legalEntity.notes].reverse().map((note: Note) => (
+                            <div key={note.id} className="p-4 border rounded-lg bg-slate-50">
+                                <p className="text-sm text-slate-500 mb-2">
+                                    {new Date(note.createdAt).toLocaleString('ru-RU', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                </p>
+                                <p className="whitespace-pre-wrap">{note.text}</p>
+                            </div>
+                        ))
+                    ) : (
+                        <p className="text-slate-500 text-center py-8">Заметок пока нет.</p>
+                    )}
+                </div>
+                <div className="flex-shrink-0">
+                    <AddNoteForm onAdd={(text) => onAddNote(legalEntity.id, text)} />
+                </div>
+            </div>
+        );
+
+      default:
+        return null;
+    }
+  };
+  
+  const getTabClassName = (tabName: DetailTab) => 
+    `px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+      activeTab === tabName 
+        ? 'bg-indigo-100 text-indigo-700' 
+        : 'text-slate-600 hover:bg-slate-100'
+    }`;
+
 
   return (
     <div className="bg-white p-6 rounded-lg shadow-md h-full flex flex-col">
-        <div className="flex justify-between items-start pb-4 border-b border-slate-200">
+        <div className="relative z-10 flex justify-between items-start pb-4 border-b border-slate-200">
           <div>
-            {/* <<< ИЗМЕНЕНО: Заголовок теперь формируется из данных legalEntity >>> */}
             <h2 className="text-2xl font-bold text-slate-800">{`${legalEntity.legalForm} «${legalEntity.name}»`}</h2>
-            <div className="flex gap-4 mt-2">
-              {overdueTasks > 0 && <span className="text-sm font-medium text-red-600">{overdueTasks} просрочено</span>}
-              {dueSoonTasks > 0 && <span className="text-sm font-medium text-yellow-600">{dueSoonTasks} скоро срок</span>}
-            </div>
           </div>
-          <div className="flex items-center gap-2">
-              {/* <<< ИЗМЕНЕНО: Обработчики кнопок теперь передают legalEntity >>> */}
-              <button onClick={() => onEdit(legalEntity)} className="p-2 text-slate-500 hover:text-indigo-600" title="Редактировать"><svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg></button>
+          <div className="flex items-center gap-2 -mr-2">
+              <button onClick={() =>onEdit(legalEntity)} className="p-2 text-slate-500 hover:text-indigo-600" title="Редактировать"><svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg></button>
               <button onClick={() => onArchive(legalEntity)} className="p-2 text-slate-500 hover:text-yellow-600" title="Архивировать"><svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg></button>
               <button onClick={() => onDelete(legalEntity)} className="p-2 text-slate-500 hover:text-red-600" title="Удалить"><svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
               <button onClick={onClose} className="p-2 text-slate-500 hover:text-slate-800" title="Закрыть"><svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
           </div>
         </div>
-        <div className="flex-1 overflow-y-auto mt-4 pr-2">
-            {/* <<< ИЗМЕНЕНО: Отображаем реквизиты напрямую, без цикла и вложенных компонентов >>> */}
-            <h3 className="text-xl font-semibold text-slate-700 mb-3">Реквизиты</h3>
-            <div className="p-4 border border-slate-200 rounded-lg bg-slate-50">
-                <dl className="divide-y divide-slate-200">
-                    <DetailRow label="ИНН / КПП" value={`${legalEntity.inn} / ${legalEntity.kpp || '-'}`} />
-                    <DetailRow label="ОГРН / ОГРНИП" value={legalEntity.ogrn} />
-                    <DetailRow label="Дата ОГРН" value={legalEntity.ogrnDate ? new Date(legalEntity.ogrnDate).toLocaleDateString('ru-RU') : '-'} />
-                    <DetailRow label="Система налогообложения" value={legalEntity.taxSystem} />
-                    <DetailRow label="Плательщик НДС" value={legalEntity.isNdsPayer ? `Да ${legalEntity.ndsValue ? `(${legalEntity.ndsValue})` : ''}`: 'Нет'} />
-                    <DetailRow label="Сотрудники" value={legalEntity.hasEmployees ? 'Есть' : 'Нет'} />
-                    <DetailRow label="Юридический адрес" value={legalEntity.legalAddress} />
-                    <DetailRow label="Фактический адрес" value={legalEntity.actualAddress} />
-                    <DetailRow label="Контактное лицо" value={legalEntity.contactPerson} />
-                    <DetailRow label="Телефон / Email" value={`${legalEntity.phone} / ${legalEntity.email}`} />
-                </dl>
-            </div>
-            {/* Здесь в будущем можно будет добавить вкладки для отображения задач, патентов, учетных данных и т.д. */}
+        
+        <nav className="mt-4 flex space-x-2 border-b border-slate-200 -mx-6 px-6 overflow-x-auto">
+          <button className={getTabClassName('requisites')} onClick={() => setActiveTab('requisites')}>Реквизиты</button>
+          <button className={getTabClassName('tasks')} onClick={() => setActiveTab('tasks')}>Задачи ({tasks.length})</button>
+          <button className={getTabClassName('notes')} onClick={() => setActiveTab('notes')}>Заметки ({legalEntity.notes?.length || 0})</button>
+          <button className={getTabClassName('patents')} onClick={() => setActiveTab('patents')}>Патенты ({legalEntity.patents?.length || 0})</button>
+          <button className={getTabClassName('credentials')} onClick={() => setActiveTab('credentials')}>Учетные данные ({legalEntity.credentials?.length || 0})</button>
+        </nav>
+
+        <div className="flex-1 overflow-y-auto mt-4">
+            {renderTabContent()}
         </div>
     </div>
   );

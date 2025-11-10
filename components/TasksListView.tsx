@@ -1,7 +1,6 @@
-// components/TasksListView.tsx
+// src/components/TasksListView.tsx
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-// <<< ИЗМЕНЕНО: Импортируем LegalEntity вместо Client >>>
 import { Task, LegalEntity, TaskStatus } from '../types';
 import { TaskItem } from './TaskItem';
 import { FilterModal, FilterState } from './FilterModal';
@@ -14,26 +13,31 @@ const toLocalDateString = (date: Date): string => {
     return `${year}-${month}-${day}`;
 };
 
-// <<< ИЗМЕНЕНО: Пропсы обновлены >>>
 interface TasksListViewProps {
     tasks: Task[];
     legalEntities: LegalEntity[];
-    onOpenDetail: (tasks: Task[]) => void;
+    onOpenDetail: (tasks: Task[], date: Date) => void;
     onBulkUpdate: (taskIds: string[]) => void;
     onDeleteTask: (taskId: string) => void;
+    customAddTaskButton?: React.ReactNode; 
 }
 
-export const TasksListView: React.FC<TasksListViewProps> = ({ tasks, legalEntities, onOpenDetail, onBulkUpdate }) => {
-    // <<< ИЗМЕНЕНО: Фильтр теперь работает с selectedLegalEntities >>>
+export const TasksListView: React.FC<TasksListViewProps> = ({ 
+    tasks, 
+    legalEntities, 
+    onOpenDetail, 
+    onBulkUpdate, 
+    onDeleteTask, 
+    customAddTaskButton 
+}) => {
     const [filters, setFilters] = useState<FilterState>({
-        searchText: '', selectedClients: [], selectedYear: 'all', selectedStatuses: [], // selectedClients будет адаптирован в FilterModal
+        searchText: '', selectedClients: [], selectedYear: 'all', selectedStatuses: [],
     });
     const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
     const [selectedTasks, setSelectedTasks] = useState<Set<string>>(new Set());
     const scrollTargetRef = useRef<HTMLDivElement | null>(null);
     const todayRef = useRef<HTMLDivElement | null>(null);
 
-    // <<< ИЗМЕНЕНО: Карта стала проще - ищем юр. лицо по ID >>>
     const legalEntityMap = useMemo(() => {
         return new Map(legalEntities.map(le => [le.id, le]));
     }, [legalEntities]);
@@ -41,20 +45,19 @@ export const TasksListView: React.FC<TasksListViewProps> = ({ tasks, legalEntiti
     const availableYears = useMemo(() => Array.from(new Set(tasks.map(task => new Date(task.dueDate).getFullYear()))).sort((a, b) => a - b), [tasks]);
 
     const filteredTasks = useMemo(() => {
+        const shouldFilterClients = legalEntities.length > 1;
         return tasks.filter(task => {
             const searchLower = filters.searchText.toLowerCase();
             const entity = legalEntityMap.get(task.legalEntityId);
             const entityName = entity ? `${entity.legalForm} ${entity.name} ${entity.inn}`.toLowerCase() : '';
-            
             return (
                 (task.title.toLowerCase().includes(searchLower) || entityName.includes(searchLower)) &&
-                // <<< ИЗМЕНЕНО: Логика фильтрации по юр. лицу >>>
-                (filters.selectedClients.length === 0 || filters.selectedClients.includes(task.legalEntityId)) &&
+                (!shouldFilterClients || filters.selectedClients.length === 0 || filters.selectedClients.includes(task.legalEntityId)) &&
                 (filters.selectedYear === 'all' || new Date(task.dueDate).getFullYear() === parseInt(filters.selectedYear, 10)) &&
                 (filters.selectedStatuses.length === 0 || filters.selectedStatuses.includes(task.status))
             );
         });
-    }, [tasks, filters, legalEntityMap]);
+    }, [tasks, filters, legalEntityMap, legalEntities.length]);
 
     const selectableTaskIds = useMemo(() => new Set(
         filteredTasks.filter(task => !isTaskLocked(task) && task.status !== TaskStatus.Completed).map(t => t.id)
@@ -86,14 +89,45 @@ export const TasksListView: React.FC<TasksListViewProps> = ({ tasks, legalEntiti
     const handleSelectAll = () => setSelectedTasks(new Set(selectableTaskIds));
     const handleDeselectAll = () => setSelectedTasks(new Set());
     
-    const handleTaskSelect = (taskId: string, isSelected: boolean) => { /* ... */ };
-    const handleBulkComplete = () => { /* ... */ };
+    const handleTaskSelect = (taskId: string, isSelected: boolean) => {
+        setSelectedTasks(prev => {
+            const newSet = new Set(prev);
+            if (isSelected) newSet.add(taskId);
+            else newSet.delete(taskId);
+            return newSet;
+        });
+    };
+
+    const handleBulkComplete = () => {
+        if (selectedTasks.size === 0) return;
+        onBulkUpdate(Array.from(selectedTasks));
+        setSelectedTasks(new Set());
+    };
 
     return (
         <>
             <div className="bg-white rounded-lg shadow-md flex flex-col h-full">
-                <div className="sticky top-0 bg-white p-4 border-b z-10 rounded-t-lg flex items-center justify-between">
-                    {/* ... блок кнопок ... */}
+                <div className="sticky top-0 bg-white p-4 border-b z-20 rounded-t-lg flex items-center justify-between gap-4"> {/* Подняли z-index у шапки на всякий случай */}
+                    <div className="flex items-center gap-4">
+                        {selectedTasks.size > 0 ? (
+                             <div className="flex items-center gap-3">
+                                <span className="text-sm font-medium text-slate-700">Выбрано: {selectedTasks.size}</span>
+                                <button onClick={handleBulkComplete} className="px-3 py-1 text-sm bg-green-100 text-green-700 rounded hover:bg-green-200">Выполнить</button>
+                                <button onClick={handleDeselectAll} className="px-3 py-1 text-sm bg-slate-100 text-slate-700 rounded hover:bg-slate-200">Снять</button>
+                            </div>
+                        ) : (
+                            <div className="flex items-center gap-3">
+                                <button onClick={handleSelectAll} className="px-3 py-1 text-sm bg-slate-100 text-slate-700 rounded hover:bg-slate-200" disabled={selectableTaskIds.size === 0}>Выбрать все</button>
+                                <button onClick={() => setIsFilterModalOpen(true)} className="px-3 py-1 text-sm bg-slate-100 text-slate-700 rounded hover:bg-slate-200 flex items-center gap-2">
+                                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" /></svg>
+                                    Фильтры
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                    <div>
+                        {customAddTaskButton}
+                    </div>
                 </div>
                 
                 <div className="overflow-y-auto flex-1 p-4">
@@ -101,13 +135,13 @@ export const TasksListView: React.FC<TasksListViewProps> = ({ tasks, legalEntiti
                         const [y, m, d] = date.split('-').map(Number);
                         const displayDate = new Date(y, m - 1, d);
                         return (
-                            <div key={date} ref={el => { if (date === initialScrollTargetKey) scrollTargetRef.current = el; if (date === todayISO) todayRef.current = el; }} className="mb-6">
-                                <h3 className={`text-lg font-bold text-slate-700 border-b pb-2 mb-3 sticky top-0 bg-white py-2 ${date === todayISO ? 'text-indigo-600' : ''}`}>
-                                    {displayDate.toLocaleString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                            <div key={date} ref={el => {  if (date === initialScrollTargetKey) scrollTargetRef.current = el; if (date === todayISO) todayRef.current = el; }} className="mb-6 bg-white">
+                                {/* ИЗМЕНЕНИЕ ЗДЕСЬ: z-10 */}
+                                <h3 className={`text-lg font-bold text-slate-700 border-b pb-2 mb-3 sticky top-[73px] bg-white py-2 z-10 ${date === todayISO ? 'text-indigo-600' : ''}`}>
+                                    {displayDate.toLocaleString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' })}
                                 </h3>
-                                <div className="space-y-3">
+                                <div className="flex flex-col gap-3">
                                     {dateTasks.map(task => {
-                                        // <<< ИЗМЕНЕНО: Логика получения имени >>>
                                         const entity = legalEntityMap.get(task.legalEntityId);
                                         const clientName = entity ? `${entity.legalForm} «${entity.name}»` : 'Юр. лицо не найдено';
                                         return (
@@ -117,7 +151,8 @@ export const TasksListView: React.FC<TasksListViewProps> = ({ tasks, legalEntiti
                                                 clientName={clientName}
                                                 isSelected={selectedTasks.has(task.id)}
                                                 onTaskSelect={handleTaskSelect}
-                                                onOpenDetail={() => onOpenDetail([task])}
+                                                onOpenDetail={() => onOpenDetail(dateTasks.filter(t => new Date(t.dueDate).toDateString() === displayDate.toDateString()), displayDate)}
+                                                onDeleteTask={onDeleteTask}
                                             />
                                         );
                                     })}
@@ -133,7 +168,6 @@ export const TasksListView: React.FC<TasksListViewProps> = ({ tasks, legalEntiti
                 </div>
             </div>
             
-            {/* <<< ИЗМЕНЕНО: Передаем legalEntities в FilterModal >>> */}
             <FilterModal 
                 isOpen={isFilterModalOpen} onClose={() => setIsFilterModalOpen(false)}
                 clients={legalEntities} availableYears={availableYears} filters={filters} onApplyFilters={setFilters}
