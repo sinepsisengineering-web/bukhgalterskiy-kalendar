@@ -137,7 +137,7 @@ export const TasksListView: React.FC<TasksListViewProps> = ({
                         return (
                             <div key={date} ref={el => {  if (date === initialScrollTargetKey) scrollTargetRef.current = el; if (date === todayISO) todayRef.current = el; }} className="mb-6 bg-white">
                                 {/* ИЗМЕНЕНИЕ ЗДЕСЬ: z-10 */}
-                                <h3 className={`text-lg font-bold text-slate-700 border-b pb-2 mb-3 sticky top-[73px] bg-white py-2 z-10 ${date === todayISO ? 'text-indigo-600' : ''}`}>
+                                <h3 className={`text-lg font-bold text-slate-700 border-b pb-2 mb-3 sticky top-[73px] bg-white py-2 z-10 ${date === todayISO ? 'text-indigo-600' : ''}`} style={{ transform: 'translateZ(0)' }}>
                                     {displayDate.toLocaleString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' })}
                                 </h3>
                                 <div className="flex flex-col gap-3">
