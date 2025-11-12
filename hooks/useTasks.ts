@@ -169,20 +169,27 @@ export const useTasks = (legalEntities: LegalEntity[], legalEntityMap: Map<strin
     setTasks(updateTaskStatuses(updatedTasks));
   };
   
-  // --- ИЗМЕНЕНИЕ 1: ДОБАВЛЕНА НОВАЯ ФУНКЦИЯ ---
   const handleBulkDelete = (taskIds: string[]) => {
       const idsToDelete = new Set(taskIds);
-      // Отменяем уведомления для каждой удаляемой задачи
       taskIds.forEach(id => cancelNotificationsForTask(id));
       setTasks(prevTasks => prevTasks.filter(task => !idsToDelete.has(task.id)));
   };
 
+  const handleDeleteTasksForLegalEntity = (legalEntityId: string) => {
+      setTasks(prevTasks => {
+          const tasksToDelete = prevTasks.filter(task => task.legalEntityId === legalEntityId);
+          tasksToDelete.forEach(task => cancelNotificationsForTask(task.id));
+          return prevTasks.filter(task => task.legalEntityId !== legalEntityId);
+      });
+  };
+
   return {
     tasks, isTaskModalOpen, setIsTaskModalOpen, taskToEdit, setTaskToEdit, taskModalDefaultDate,
-    isTaskDetailModalOpen, setIsTaskDetailModalOpen, tasksForDetailView,
+    isTaskDetailModalOpen, setIsTaskDetailModalOpen, tasksForDetailView, setTasksForDetailView,
     handleSaveTask,
     handleOpenNewTaskForm,
     handleOpenTaskDetail, handleToggleComplete, handleEditTaskFromDetail, handleDeleteTask, handleBulkComplete,
-    handleBulkDelete, // --- ИЗМЕНЕНИЕ 2: ДОБАВЛЕНО В RETURN ---
+    handleBulkDelete,
+    handleDeleteTasksForLegalEntity,
   };
 };

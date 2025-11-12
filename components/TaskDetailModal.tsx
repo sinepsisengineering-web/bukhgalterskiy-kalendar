@@ -1,13 +1,11 @@
-// components/TaskDetailModal.tsx
+// src/components/TaskDetailModal.tsx
 
 import React, { useMemo } from 'react';
 import { Modal } from './Modal';
-// <<< ИЗМЕНЕНО: Импортируем LegalEntity вместо Client >>>
 import { LegalEntity, Task, TaskStatus } from '../types';
 import { TASK_STATUS_STYLES } from '../constants';
 import { isTaskLocked } from '../services/taskGenerator';
 
-// <<< ИЗМЕНЕНО: Пропсы обновлены >>>
 interface TaskDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -31,7 +29,6 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
 }) => {
   if (!isOpen || tasks.length === 0) return null;
 
-  // <<< ИЗМЕНЕНО: Карта стала проще >>>
   const legalEntityMap = useMemo(() => {
     return new Map(legalEntities.map(le => [le.id, le]));
   }, [legalEntities]);
@@ -43,7 +40,6 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
     <Modal isOpen={isOpen} onClose={onClose} title={isGrouped ? `Задачи на ${new Date(mainTask.dueDate).toLocaleDateString('ru-RU')}` : mainTask.title}>
       <div className="p-4 space-y-4">
         {tasks.map(task => {
-          // <<< ИЗМЕНЕНО: Логика получения юр. лица и его имени >>>
           const legalEntity = legalEntityMap.get(task.legalEntityId);
           const clientDisplayName = legalEntity ? `${legalEntity.legalForm} «${legalEntity.name}»` : 'Юр. лицо не найдено';
           
@@ -56,7 +52,6 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
               <div className="flex justify-between items-start">
                 <div>
                   {isGrouped && <p className={`font-semibold ${statusStyle.text}`}>{task.title}</p>}
-                  {/* <<< ИЗМЕНЕНО: Обработчик клика теперь работает с legalEntity >>> */}
                   <p 
                     className="text-sm text-slate-600 hover:text-indigo-600 cursor-pointer"
                     onClick={() => legalEntity && onSelectLegalEntity(legalEntity)}
