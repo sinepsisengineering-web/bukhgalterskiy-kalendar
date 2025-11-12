@@ -4,13 +4,14 @@ import React, { useState, useMemo } from 'react';
 import { Task, LegalEntity, TaskStatus } from '../types';
 import { FilterModal, FilterState } from './FilterModal';
 import { isTaskLocked } from '../services/taskGenerator';
-import { ReusableTaskList } from './ReusableTaskList'; // ИЗМЕНЕНИЕ: Используем новый компонент
+import { ReusableTaskList } from './ReusableTaskList';
 
 interface TasksListViewProps {
     tasks: Task[];
     legalEntities: LegalEntity[];
     onOpenDetail: (tasks: Task[], date: Date) => void;
     onBulkUpdate: (taskIds: string[]) => void;
+    onBulkDelete: (taskIds: string[]) => void; // ИЗМЕНЕНИЕ 1: Новый пропс
     onDeleteTask: (taskId: string) => void;
     customAddTaskButton?: React.ReactNode;
 }
@@ -20,10 +21,10 @@ export const TasksListView: React.FC<TasksListViewProps> = ({
     legalEntities,
     onOpenDetail,
     onBulkUpdate,
+    onBulkDelete, // ИЗМЕНЕНИЕ 2: Получаем пропс
     onDeleteTask,
     customAddTaskButton
 }) => {
-    // --- ВСЯ ЛОГИКА УПРАВЛЕНИЯ СОСТОЯНИЕМ ОСТАЕТСЯ ЗДЕСЬ ---
     const [filters, setFilters] = useState<FilterState>({
         searchText: '', selectedClients: [], selectedYear: 'all', selectedStatuses: [],
     });
@@ -52,7 +53,7 @@ export const TasksListView: React.FC<TasksListViewProps> = ({
     }, [tasks, filters, legalEntityMap, legalEntities.length]);
 
     const selectableTaskIds = useMemo(() => new Set(
-        filteredTasks.filter(task => !isTaskLocked(task) && task.status !== TaskStatus.Completed).map(t => t.id)
+        filteredTasks.filter(task => !isTaskLocked(task)).map(t => t.id)
     ), [filteredTasks]);
 
     const handleSelectAll = () => setSelectedTasks(new Set(selectableTaskIds));
@@ -73,7 +74,15 @@ export const TasksListView: React.FC<TasksListViewProps> = ({
         setSelectedTasks(new Set());
     };
 
-    // --- ВЕСЬ JSX ТЕПЕРЬ СОСТОИТ ИЗ ВЫЗОВА REUSABLETASKLIST И МОДАЛЬНОГО ОКНА ---
+    // ИЗМЕНЕНИЕ 3: Новый обработчик
+    const handleBulkDelete = () => {
+        if (selectedTasks.size === 0) return;
+        if (window.confirm(`Вы уверены, что хотите удалить ${selectedTasks.size} задач? Это действие необратимо.`)) {
+            onBulkDelete(Array.from(selectedTasks));
+            setSelectedTasks(new Set());
+        }
+    };
+
     return (
         <>
             <ReusableTaskList
@@ -85,7 +94,7 @@ export const TasksListView: React.FC<TasksListViewProps> = ({
                 onOpenDetail={onOpenDetail}
                 onDeleteTask={onDeleteTask}
                 emptyStateText="Задачи по заданным критериям не найдены."
-                stickyTopOffset={73} // Используем стандартное значение для главного экрана
+                stickyTopOffset={73}
                 headerComponent={
                     <div className="flex items-center justify-between gap-4">
                         <div className="flex items-center gap-4">
@@ -93,6 +102,8 @@ export const TasksListView: React.FC<TasksListViewProps> = ({
                                 <div className="flex items-center gap-3">
                                     <span className="text-sm font-medium text-slate-700">Выбрано: {selectedTasks.size}</span>
                                     <button onClick={handleBulkComplete} className="px-3 py-1 text-sm bg-green-100 text-green-700 rounded hover:bg-green-200">Выполнить</button>
+                                    {/* ИЗМЕНЕНИЕ 4: Новая кнопка */}
+                                    <button onClick={handleBulkDelete} className="px-3 py-1 text-sm bg-red-100 text-red-700 rounded hover:bg-red-200">Удалить</button>
                                     <button onClick={handleDeselectAll} className="px-3 py-1 text-sm bg-slate-100 text-slate-700 rounded hover:bg-slate-200">Снять</button>
                                 </div>
                             ) : (

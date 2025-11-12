@@ -1,9 +1,10 @@
 // src/components/ClientDetailCard.tsx
 
 import React, { useState, useMemo } from 'react';
-import { LegalEntity, Task, Patent, Credential, Note } from '../types';
+import { LegalEntity, Task, Patent, Credential, Note, TaskStatus } from '../types';
 import { ReusableTaskList } from './ReusableTaskList';
 import { FilterModal, FilterState } from './FilterModal';
+import { isTaskLocked } from '../services/taskGenerator'; // <-- ИЗМЕНЕНИЕ: Импортируем утилиту
 
 type DetailTab = 'requisites' | 'tasks' | 'patents' | 'credentials' | 'notes';
 
@@ -17,10 +18,12 @@ interface ClientDetailCardProps {
   onAddTask: (defaultValues: Partial<Task>) => void;
   onOpenTaskDetail: (tasks: Task[], date: Date) => void;
   onBulkComplete: (taskIds: string[]) => void;
+  onBulkDelete: (taskIds: string[]) => void; // <-- ИЗМЕНЕНИЕ: Добавляем новый пропс
   onDeleteTask: (taskId: string) => void;
   onAddNote: (legalEntityId: string, noteText: string) => void;
 }
 
+// Компоненты DetailRow и AddNoteForm остаются без изменений
 const DetailRow: React.FC<{ label: string; value?: string | React.ReactNode }> = ({ label, value }) => (
     <div className="py-3 sm:grid sm:grid-cols-3 sm:gap-4 border-t border-slate-200 first:border-t-0">
       <dt className="text-sm font-medium text-slate-500">{label}</dt>
@@ -59,6 +62,7 @@ const AddNoteForm: React.FC<{ onAdd: (text: string) => void }> = ({ onAdd }) => 
     );
 };
 
+
 export const ClientDetailCard: React.FC<ClientDetailCardProps> = ({ 
   legalEntity, 
   tasks, 
@@ -69,17 +73,16 @@ export const ClientDetailCard: React.FC<ClientDetailCardProps> = ({
   onAddTask,
   onOpenTaskDetail,
   onBulkComplete,
+  onBulkDelete, // <-- ИЗМЕНЕНИЕ: Получаем новый пропс
   onDeleteTask,
   onAddNote
 }) => {
   const [activeTab, setActiveTab] = useState<DetailTab>('requisites');
 
+  // --- ЛОГИКА ФИЛЬТРАЦИИ (остается без изменений) ---
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
   const [filters, setFilters] = useState<FilterState>({
-    searchText: '',
-    selectedClients: [],
-    selectedYear: 'all',
-    selectedStatuses: [],
+    searchText: '', selectedClients: [], selectedYear: 'all', selectedStatuses: [],
   });
 
   const availableYears = useMemo(() => 
@@ -96,10 +99,46 @@ export const ClientDetailCard: React.FC<ClientDetailCardProps> = ({
         );
     });
   }, [tasks, filters]);
+  
+  // --- ИЗМЕНЕНИЕ: ДОБАВЛЯЕМ ЛОГИКУ ВЫБОРА ЗАДАЧ (как в TasksListView) ---
+  const [selectedTasks, setSelectedTasks] = useState<Set<string>>(new Set());
+
+  const selectableTaskIds = useMemo(() => new Set(
+      filteredTasks.filter(task => !isTaskLocked(task)).map(t => t.id)
+  ), [filteredTasks]);
+
+  const handleSelectAll = () => setSelectedTasks(new Set(selectableTaskIds));
+  const handleDeselectAll = () => setSelectedTasks(new Set());
+
+  const handleTaskSelect = (taskId: string, isSelected: boolean) => {
+      setSelectedTasks(prev => {
+          const newSet = new Set(prev);
+          if (isSelected) newSet.add(taskId);
+          else newSet.delete(taskId);
+          return newSet;
+      });
+  };
+
+  const handleBulkComplete = () => {
+      if (selectedTasks.size === 0) return;
+      onBulkComplete(Array.from(selectedTasks));
+      setSelectedTasks(new Set());
+  };
+  
+  const handleBulkDelete = () => {
+      if (selectedTasks.size === 0) return;
+      if (window.confirm(`Вы уверены, что хотите удалить ${selectedTasks.size} задач?`)) {
+          onBulkDelete(Array.from(selectedTasks));
+          setSelectedTasks(new Set());
+      }
+  };
+  // --- КОНЕЦ БЛОКА ИЗМЕНЕНИЙ ---
+
 
   const renderTabContent = () => {
     switch (activeTab) {
       case 'requisites':
+        // ... (без изменений)
         return (
           <div className="p-4 border border-slate-200 rounded-lg bg-slate-50 mt-4">
               <dl>
@@ -119,33 +158,50 @@ export const ClientDetailCard: React.FC<ClientDetailCardProps> = ({
       
       case 'tasks': {
         const legalEntityMap = new Map<string, LegalEntity>([[legalEntity.id, legalEntity]]);
+        
+        // --- ИЗМЕНЕНИЕ: СОЗДАЕМ ДИНАМИЧЕСКИЙ HEADER ---
+        const headerComponent = (
+          <div className="flex justify-between items-center">
+            <div className="flex items-center gap-3">
+              {selectedTasks.size > 0 ? (
+                <>
+                  <span className="text-sm font-medium text-slate-700">Выбрано: {selectedTasks.size}</span>
+                  <button onClick={handleBulkComplete} className="px-3 py-1 text-sm bg-green-100 text-green-700 rounded hover:bg-green-200">Выполнить</button>
+                  <button onClick={handleBulkDelete} className="px-3 py-1 text-sm bg-red-100 text-red-700 rounded hover:bg-red-200">Удалить</button>
+                  <button onClick={handleDeselectAll} className="px-3 py-1 text-sm bg-slate-100 text-slate-700 rounded hover:bg-slate-200">Снять</button>
+                </>
+              ) : (
+                <>
+                  <button onClick={handleSelectAll} disabled={selectableTaskIds.size === 0} className="px-3 py-1 text-sm bg-slate-100 text-slate-700 rounded hover:bg-slate-200 disabled:opacity-50">Выбрать все</button>
+                  <button onClick={() => setIsFilterModalOpen(true)} className="px-3 py-1 text-sm bg-slate-100 text-slate-700 rounded hover:bg-slate-200 flex items-center gap-2">
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" /></svg>
+                    Фильтры
+                  </button>
+                </>
+              )}
+            </div>
+            <button
+              onClick={() => onAddTask({ legalEntityId: legalEntity.id })}
+              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors shadow"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" /></svg>
+              Добавить задачу
+            </button>
+          </div>
+        );
+
         return (
           <div className="h-full flex flex-col">
+            {/* --- ИЗМЕНЕНИЕ: ПЕРЕДАЕМ ПРАВИЛЬНЫЕ ПРОПСЫ --- */}
             <ReusableTaskList
               tasks={filteredTasks}
               legalEntityMap={legalEntityMap}
-              selectedTaskIds={new Set<string>()}
-              selectableTaskIds={new Set<string>()}
-              onTaskSelect={() => {}}
+              selectedTaskIds={selectedTasks}
+              selectableTaskIds={selectableTaskIds}
+              onTaskSelect={handleTaskSelect}
               onOpenDetail={onOpenTaskDetail}
               onDeleteTask={onDeleteTask}
-              headerComponent={
-                <div className="flex justify-between items-center">
-                  <button 
-                    onClick={() => setIsFilterModalOpen(true)} 
-                    className="px-3 py-1 text-sm bg-slate-100 text-slate-700 rounded hover:bg-slate-200 flex items-center gap-2">
-                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" /></svg>
-                      Фильтры
-                  </button>
-                  <button
-                    onClick={() => onAddTask({ legalEntityId: legalEntity.id })}
-                    className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors shadow"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" /></svg>
-                    Добавить задачу
-                  </button>
-                </div>
-              }
+              headerComponent={headerComponent}
               emptyStateText="У этого клиента нет задач, соответствующих фильтру."
               stickyTopOffset={0}
             />
@@ -161,6 +217,7 @@ export const ClientDetailCard: React.FC<ClientDetailCardProps> = ({
         );
       }
 
+      // ... (остальные 'case' без изменений)
       case 'patents':
         return (
             <div className="mt-4 space-y-3">
@@ -221,6 +278,7 @@ export const ClientDetailCard: React.FC<ClientDetailCardProps> = ({
 
 
   return (
+    // ... (остальная часть JSX без изменений)
     <div className="bg-white p-6 rounded-lg shadow-md h-full flex flex-col">
         <div className="relative z-10 flex justify-between items-start pb-4 border-b border-slate-200">
           <div>

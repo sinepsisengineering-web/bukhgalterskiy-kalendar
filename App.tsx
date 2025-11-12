@@ -19,7 +19,6 @@ import { useTasks } from './hooks/useTasks';
 
 type View = 'calendar' | 'tasks' | 'clients' | 'archive' | 'settings';
 
-// ... остальная часть файла (ConfirmationProps, parseLegalEntity) без изменений ...
 interface ConfirmationProps {
     title: string;
     message: React.ReactNode;
@@ -52,7 +51,6 @@ const parseLegalEntity = (le: any): LegalEntity => {
 };
 
 const App: React.FC = () => {
-    // ... все хуки useState остаются без изменений ...
     const [legalEntities, setLegalEntities] = useState<LegalEntity[]>(() => {
         try {
             const savedLegalEntities = localStorage.getItem('legalEntities');
@@ -93,19 +91,18 @@ const App: React.FC = () => {
 
     const legalEntityMap = useMemo(() => new Map(legalEntities.map(le => [le.id, le])), [legalEntities]);
     
-    // Получаем нашу новую универсальную функцию из хука
+    // --- ИЗМЕНЕНИЕ 1: Получаем новую функцию ---
     const {
         tasks, isTaskModalOpen, setIsTaskModalOpen, taskToEdit, setTaskToEdit, taskModalDefaultDate,
         isTaskDetailModalOpen, setIsTaskDetailModalOpen, tasksForDetailView,
-        handleSaveTask, handleOpenNewTaskForm, // ИЗМЕНЕНИЕ: Используем handleOpenNewTaskForm
-        handleOpenTaskDetail, handleToggleComplete, handleEditTaskFromDetail, handleDeleteTask, handleBulkComplete,
+        handleSaveTask, handleOpenNewTaskForm,
+        handleOpenTaskDetail, handleToggleComplete, handleEditTaskFromDetail, handleDeleteTask, handleBulkComplete, handleBulkDelete, handleDeleteTasksForLegalEntity,
     } = useTasks(activeLegalEntities, legalEntityMap);
 
     useEffect(() => {
         localStorage.setItem('legalEntities', JSON.stringify(legalEntities));
     }, [legalEntities]);
     
-    // ... все остальные обработчики (handleSaveLegalEntity, etc.) остаются без изменений ...
      const handleSaveLegalEntity = (entityData: LegalEntity) => {
         const entityExists = entityData.id && legalEntities.some(le => le.id === entityData.id);
         const updatedEntities = entityExists
@@ -150,8 +147,10 @@ const App: React.FC = () => {
         setLegalEntities(prev => prev.map(le => le.id === entityId ? { ...le, isArchived: false } : le));
     };
 
+    // --- ИЗМЕНЕНИЕ 2: Обновляем функцию удаления ---
     const handleDeleteLegalEntity = (entity: LegalEntity) => {
-        if (window.confirm(`Вы уверены, что хотите удалить клиента "${entity.name}"? Это действие необратимо.`)) {
+        if (window.confirm(`Вы уверены, что хотите удалить клиента "${entity.name}"? Все связанные задачи также будут удалены.`)) {
+            handleDeleteTasksForLegalEntity(entity.id);
             setLegalEntities(prev => prev.filter(le => le.id !== entity.id));
             if (selectedLegalEntity?.id === entity.id) setSelectedLegalEntity(null);
         }
@@ -162,8 +161,6 @@ const App: React.FC = () => {
         setIsLegalEntityModalOpen(true);
     };
     
-    // Удаляем отсюда локальный обработчик handleAddTaskForClient
-
     const renderContent = () => {
         if (selectedLegalEntity && activeView === 'clients') {
             const entityTasks = tasks.filter(task => task.legalEntityId === selectedLegalEntity.id);
@@ -177,6 +174,7 @@ const App: React.FC = () => {
                 onAddTask={() => handleOpenNewTaskForm({ legalEntityId: selectedLegalEntity.id })}
                 onOpenTaskDetail={handleOpenTaskDetail}
                 onBulkComplete={handleBulkComplete}
+                onBulkDelete={handleBulkDelete}
                 onDeleteTask={handleDeleteTask}
                 onAddNote={handleAddNote}
             />;
@@ -184,11 +182,10 @@ const App: React.FC = () => {
         switch(activeView) {
             case 'calendar': return <Calendar tasks={tasks} legalEntities={activeLegalEntities} onUpdateTaskStatus={() => {}} onAddTask={(date) => handleOpenNewTaskForm({ dueDate: date })} onOpenDetail={handleOpenTaskDetail} onDeleteTask={handleDeleteTask} />;
             
-            // === ВОЗВРАЩАЕМ КНОПКУ "ДОБАВИТЬ ЗАДАЧУ" НА ГЛАВНЫЙ ЭКРАН ===
             case 'tasks': 
                 const addTaskButton = (
                     <button
-                        onClick={() => handleOpenNewTaskForm()} // Вызываем универсальную функцию без параметров
+                        onClick={() => handleOpenNewTaskForm()}
                         className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors shadow"
                     >
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" /></svg>
@@ -201,8 +198,9 @@ const App: React.FC = () => {
                     legalEntities={activeLegalEntities} 
                     onOpenDetail={handleOpenTaskDetail} 
                     onBulkUpdate={handleBulkComplete} 
+                    onBulkDelete={handleBulkDelete}
                     onDeleteTask={handleDeleteTask}
-                    customAddTaskButton={addTaskButton} // Передаем кнопку в пропсы
+                    customAddTaskButton={addTaskButton}
                 />;
 
             case 'clients': return <ClientList legalEntities={activeLegalEntities} onSelectLegalEntity={setSelectedLegalEntity} onAddLegalEntity={() => handleOpenLegalEntityForm(null)} />;
@@ -214,7 +212,6 @@ const App: React.FC = () => {
 
     return (
         <div className="flex h-screen bg-slate-100 font-sans">
-            {/* ... остальная часть return без изменений ... */}
             <Sidebar activeView={activeView} setActiveView={(v) => { setSelectedLegalEntity(null); if (v === 'tasks') { setTasksViewKey(prev => prev + 1); } setActiveView(v as View); }} />
             
             <main className="flex-1 flex flex-col overflow-hidden">

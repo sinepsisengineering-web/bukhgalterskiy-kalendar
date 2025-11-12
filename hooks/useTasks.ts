@@ -66,21 +66,14 @@ export const useTasks = (legalEntities: LegalEntity[], legalEntityMap: Map<strin
     }
   }, [tasks, legalEntityMap]);
 
-  // --- НОВЫЙ БЛОК: Периодическое обновление статусов ---
   useEffect(() => {
-    // Устанавливаем интервал, который будет срабатывать каждую минуту
     const intervalId = setInterval(() => {
       console.log('Плановая проверка и обновление статусов задач...');
-      // Используем функциональную форму setTasks, чтобы всегда работать с актуальным состоянием
       setTasks(currentTasks => updateTaskStatuses(currentTasks));
-    }, 60 * 1000); // 60 000 миллисекунд = 1 минута
+    }, 60 * 1000); 
 
-    // Эта функция будет вызвана, когда компонент "умирает".
-    // Она остановит таймер, чтобы избежать утечек памяти и лишних вызовов.
     return () => clearInterval(intervalId);
-  }, []); // Пустой массив зависимостей означает, что этот эффект запустится только один раз
-
-  // --- Остальной код остается без изменений ---
+  }, []);
 
   const handleSaveTask = (taskData: Omit<Task, 'id' | 'status' | 'isAutomatic' | 'seriesId'>) => {
     let savedTask: Task | undefined;
@@ -175,6 +168,14 @@ export const useTasks = (legalEntities: LegalEntity[], legalEntityMap: Map<strin
     });
     setTasks(updateTaskStatuses(updatedTasks));
   };
+  
+  // --- ИЗМЕНЕНИЕ 1: ДОБАВЛЕНА НОВАЯ ФУНКЦИЯ ---
+  const handleBulkDelete = (taskIds: string[]) => {
+      const idsToDelete = new Set(taskIds);
+      // Отменяем уведомления для каждой удаляемой задачи
+      taskIds.forEach(id => cancelNotificationsForTask(id));
+      setTasks(prevTasks => prevTasks.filter(task => !idsToDelete.has(task.id)));
+  };
 
   return {
     tasks, isTaskModalOpen, setIsTaskModalOpen, taskToEdit, setTaskToEdit, taskModalDefaultDate,
@@ -182,5 +183,6 @@ export const useTasks = (legalEntities: LegalEntity[], legalEntityMap: Map<strin
     handleSaveTask,
     handleOpenNewTaskForm,
     handleOpenTaskDetail, handleToggleComplete, handleEditTaskFromDetail, handleDeleteTask, handleBulkComplete,
+    handleBulkDelete, // --- ИЗМЕНЕНИЕ 2: ДОБАВЛЕНО В RETURN ---
   };
 };

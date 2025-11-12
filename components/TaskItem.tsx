@@ -24,7 +24,8 @@ export const TaskItem: React.FC<TaskItemProps> = ({ task, clientName, isSelected
 
   const handleSelectToggle = (e: React.ChangeEvent<HTMLInputElement>) => {
     e.stopPropagation();
-    if (locked || task.status === TaskStatus.Completed) return;
+    // ИЗМЕНЕНИЕ: Убрана проверка на task.status === TaskStatus.Completed
+    if (locked) return;
     onTaskSelect(task.id, e.target.checked);
   };
 
@@ -49,7 +50,8 @@ export const TaskItem: React.FC<TaskItemProps> = ({ task, clientName, isSelected
         checked={isSelected}
         onChange={handleSelectToggle}
         onClick={(e) => e.stopPropagation()}
-        disabled={locked || isCompleted}
+        // ИЗМЕНЕНИЕ: Убрана проверка isCompleted из disabled
+        disabled={locked}
         className="h-5 w-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
       />
       
