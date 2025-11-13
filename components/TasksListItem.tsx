@@ -1,24 +1,33 @@
+// src/components/TasksListItem.tsx
+
 import React, { useMemo } from 'react';
-import { Task, TaskStatus, Client } from '../types';
+// ==================== ИСПРАВЛЕНИЕ 1: Заменяем Client на LegalEntity ====================
+import { Task, TaskStatus, LegalEntity } from '../types';
 import { TASK_STATUS_STYLES } from '../constants';
-import { isTaskCompletable } from '../services/taskGenerator';
+// ==================== ИСПРАВЛЕНИЕ 2: Используем правильную функцию isTaskLocked ====================
+import { isTaskLocked } from '../services/taskGenerator';
+import { useConfirmation } from '../contexts/ConfirmationProvider';
 
 interface TasksListItemProps {
-  tasks: Task[]; // A group of tasks with the same title/series
-  clients: Client[];
+  tasks: Task[];
+  // ==================== ИСПРАВЛЕНИЕ 3: Обновляем пропсы ====================
+  legalEntities: LegalEntity[]; // Было: clients: Client[];
   onOpenDetail: (tasks: Task[]) => void;
   selectedTasks: Set<string>;
   onTaskSelect: (taskId: string, isSelected: boolean) => void;
-  onDeleteTask: (taskId: string) => void; // === ИЗМЕНЕНИЕ: Добавляем пропс onDeleteTask ===
+  onDeleteTask: (taskId: string) => void;
 }
 
-export const TasksListItem: React.FC<TasksListItemProps> = ({ tasks, clients, onOpenDetail, selectedTasks, onTaskSelect, onDeleteTask }) => {
+export const TasksListItem: React.FC<TasksListItemProps> = ({ tasks, legalEntities, onOpenDetail, selectedTasks, onTaskSelect, onDeleteTask }) => {
+  const { confirm } = useConfirmation();
+
   if (tasks.length === 0) return null;
   
   const mainTask = tasks[0];
   const isGrouped = tasks.length > 1;
 
-  const isLocked = mainTask.isPeriodLocked && !isTaskCompletable(mainTask);
+  // ==================== ИСПРАВЛЕНИЕ 4: Упрощаем и исправляем логику блокировки ====================
+  const isLocked = isTaskLocked(mainTask);
 
   const uncompletedTasks = useMemo(() => tasks.filter(t => t.status !== TaskStatus.Completed), [tasks]);
   const isAllCompleted = uncompletedTasks.length === 0;
@@ -27,8 +36,8 @@ export const TasksListItem: React.FC<TasksListItemProps> = ({ tasks, clients, on
     if (isAllCompleted) return TaskStatus.Completed;
     if (uncompletedTasks.some(t => t.status === TaskStatus.Overdue)) return TaskStatus.Overdue;
     if (uncompletedTasks.some(t => t.status === TaskStatus.DueSoon)) return TaskStatus.DueSoon;
-    return TaskStatus.InProgress;
-  }, [uncompletedTasks, isAllCompleted]);
+    return mainTask.status;
+  }, [uncompletedTasks, isAllCompleted, mainTask.status]);
 
   const statusStyle = TASK_STATUS_STYLES[overallStatus];
 
@@ -38,13 +47,14 @@ export const TasksListItem: React.FC<TasksListItemProps> = ({ tasks, clients, on
   
   const isGroupSelected = useMemo(() => tasks.every(t => selectedTasks.has(t.id)), [tasks, selectedTasks]);
 
-  // === ИЗМЕНЕНИЕ: Добавляем обработчик для кнопки удаления ===
-  // Предотвращаем всплытие события, чтобы не открывалось модальное окно деталей
-  const handleDeleteClick = (e: React.MouseEvent) => {
+  const handleDeleteClick = async (e: React.MouseEvent) => {
     e.stopPropagation(); 
-    // Удаляем только "главную" задачу из группы. Если это ручная задача, она удалится.
-    // Если автоматическая, пользователь увидит в деталях, что она осталась для других клиентов.
-    onDeleteTask(mainTask.id);
+    const isConfirmed = await confirm({
+      message: `Вы уверены, что хотите удалить задачу "${mainTask.title}"?`
+    });
+    if (isConfirmed) {
+      onDeleteTask(mainTask.id);
+    }
   };
   
   return (
@@ -75,8 +85,6 @@ export const TasksListItem: React.FC<TasksListItemProps> = ({ tasks, clients, on
             <div className="text-right">
                 <span className={`text-xs font-bold px-2 py-1 rounded-full ${statusStyle.text} ${statusStyle.bg.replace('-100', '-200')}`}>{overallStatus}</span>
             </div>
-            {/* === ИЗМЕНЕНИЕ: Добавляем кнопку удаления === */}
-            {/* Показывать кнопку удаления только для задач, созданных вручную */}
             {!mainTask.isAutomatic && (
                  <button 
                     type="button" 

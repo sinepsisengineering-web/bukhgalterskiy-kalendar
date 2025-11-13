@@ -4,6 +4,7 @@ import React from 'react';
 import { Task, TaskStatus } from '../types';
 import { TASK_STATUS_STYLES } from '../constants';
 import { isTaskLocked } from '../services/taskGenerator';
+import { useConfirmation } from '../contexts/ConfirmationProvider';
 
 interface TaskItemProps {
   task: Task;
@@ -15,6 +16,8 @@ interface TaskItemProps {
 }
 
 export const TaskItem: React.FC<TaskItemProps> = ({ task, clientName, isSelected, onTaskSelect, onOpenDetail, onDeleteTask }) => {
+  const confirm = useConfirmation();
+
   if (!task) {
     return null;
   }
@@ -24,14 +27,25 @@ export const TaskItem: React.FC<TaskItemProps> = ({ task, clientName, isSelected
 
   const handleSelectToggle = (e: React.ChangeEvent<HTMLInputElement>) => {
     e.stopPropagation();
-    // ИЗМЕНЕНИЕ: Убрана проверка на task.status === TaskStatus.Completed
     if (locked) return;
     onTaskSelect(task.id, e.target.checked);
   };
 
-  const handleDeleteClick = (e: React.MouseEvent) => {
+  const handleDeleteClick = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (window.confirm(`Вы уверены, что хотите удалить задачу "${task.title}"?`)) {
+    
+    const isConfirmed = await confirm({
+  title: 'Подтверждение удаления',
+  message: (
+    <>
+      <p>Вы уверены, что хотите удалить задачу?</p>
+      <p className="text-sm text-slate-500 mt-2">Связанный клиент: ...</p>
+    </>
+  ),
+  confirmButtonText: 'Удалить',
+  confirmButtonClass: 'bg-red-600 hover:bg-red-700'    });
+
+    if (isConfirmed) {
       onDeleteTask(task.id);
     }
   };
@@ -39,23 +53,19 @@ export const TaskItem: React.FC<TaskItemProps> = ({ task, clientName, isSelected
   const isCompleted = task.status === TaskStatus.Completed;
 
   return (
-    // ГЛАВНЫЙ КОНТЕЙНЕР: Вся строка снова кликабельна и имеет тень при наведении
     <div
       onClick={() => onOpenDetail(task)}
       className={`p-3 flex items-center gap-4 border-l-4 rounded cursor-pointer transition-shadow hover:shadow-md ${statusStyle.bg} ${statusStyle.border}`}
     >
-      {/* Чекбокс (негибкий) */}
       <input
         type="checkbox"
         checked={isSelected}
         onChange={handleSelectToggle}
         onClick={(e) => e.stopPropagation()}
-        // ИЗМЕНЕНИЕ: Убрана проверка isCompleted из disabled
         disabled={locked}
         className="h-5 w-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
       />
       
-      {/* Блок с текстом (ГИБКИЙ, будет сжиматься) */}
       <div className="flex-1 min-w-0">
         <p className={`font-semibold truncate ${statusStyle.text} ${isCompleted ? 'line-through text-slate-500' : ''}`}>
           {task.title}
@@ -63,11 +73,11 @@ export const TaskItem: React.FC<TaskItemProps> = ({ task, clientName, isSelected
         <p className="text-sm text-slate-500 truncate">{clientName}</p>
       </div>
       
-      {/* Правая группа (негибкая) */}
       <div className="flex items-center gap-3 flex-shrink-0">
         <div className="hidden sm:flex flex-col items-end text-right">
           <p className={`text-sm font-medium ${statusStyle.text}`}>{task.status}</p>
           <p className="text-sm text-slate-600">
+            {/* ====== ВОТ ИСПРАВЛЕННАЯ СТРОКА ====== */}
             {new Date(task.dueDate).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' })}
           </p>
         </div>

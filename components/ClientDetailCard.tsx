@@ -4,8 +4,9 @@ import React, { useState, useMemo } from 'react';
 import { LegalEntity, Task, Patent, Credential, Note, TaskStatus } from '../types';
 import { ReusableTaskList } from './ReusableTaskList';
 import { FilterModal, FilterState } from './FilterModal';
-import { isTaskLocked } from '../services/taskGenerator'; // <-- ИЗМЕНЕНИЕ: Импортируем утилиту
-
+import { isTaskLocked } from '../services/taskGenerator';
+// ИЗМЕНЕНИЕ 1: Импортируем хук
+import { useConfirmation } from '../contexts/ConfirmationProvider';
 type DetailTab = 'requisites' | 'tasks' | 'patents' | 'credentials' | 'notes';
 
 interface ClientDetailCardProps {
@@ -18,12 +19,12 @@ interface ClientDetailCardProps {
   onAddTask: (defaultValues: Partial<Task>) => void;
   onOpenTaskDetail: (tasks: Task[], date: Date) => void;
   onBulkComplete: (taskIds: string[]) => void;
-  onBulkDelete: (taskIds: string[]) => void; // <-- ИЗМЕНЕНИЕ: Добавляем новый пропс
+  onBulkDelete: (taskIds: string[]) => void;
   onDeleteTask: (taskId: string) => void;
   onAddNote: (legalEntityId: string, noteText: string) => void;
 }
 
-// Компоненты DetailRow и AddNoteForm остаются без изменений
+// Компоненты DetailRow и AddNoteForm (полные версии)
 const DetailRow: React.FC<{ label: string; value?: string | React.ReactNode }> = ({ label, value }) => (
     <div className="py-3 sm:grid sm:grid-cols-3 sm:gap-4 border-t border-slate-200 first:border-t-0">
       <dt className="text-sm font-medium text-slate-500">{label}</dt>
@@ -64,22 +65,13 @@ const AddNoteForm: React.FC<{ onAdd: (text: string) => void }> = ({ onAdd }) => 
 
 
 export const ClientDetailCard: React.FC<ClientDetailCardProps> = ({ 
-  legalEntity, 
-  tasks, 
-  onClose, 
-  onEdit, 
-  onArchive, 
-  onDelete,
-  onAddTask,
-  onOpenTaskDetail,
-  onBulkComplete,
-  onBulkDelete, // <-- ИЗМЕНЕНИЕ: Получаем новый пропс
-  onDeleteTask,
-  onAddNote
+  legalEntity, tasks, onClose, onEdit, onArchive, onDelete, onAddTask,
+  onOpenTaskDetail, onBulkComplete, onBulkDelete, onDeleteTask, onAddNote
 }) => {
-  const [activeTab, setActiveTab] = useState<DetailTab>('requisites');
+  // ИЗМЕНЕНИЕ 2: Инициализируем хук
+  const confirm = useConfirmation();
 
-  // --- ЛОГИКА ФИЛЬТРАЦИИ (остается без изменений) ---
+  const [activeTab, setActiveTab] = useState<DetailTab>('requisites');
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
   const [filters, setFilters] = useState<FilterState>({
     searchText: '', selectedClients: [], selectedYear: 'all', selectedStatuses: [],
@@ -100,9 +92,7 @@ export const ClientDetailCard: React.FC<ClientDetailCardProps> = ({
     });
   }, [tasks, filters]);
   
-  // --- ИЗМЕНЕНИЕ: ДОБАВЛЯЕМ ЛОГИКУ ВЫБОРА ЗАДАЧ (как в TasksListView) ---
   const [selectedTasks, setSelectedTasks] = useState<Set<string>>(new Set());
-
   const selectableTaskIds = useMemo(() => new Set(
       filteredTasks.filter(task => !isTaskLocked(task)).map(t => t.id)
   ), [filteredTasks]);
@@ -125,20 +115,45 @@ export const ClientDetailCard: React.FC<ClientDetailCardProps> = ({
       setSelectedTasks(new Set());
   };
   
-  const handleBulkDelete = () => {
+  // ИЗМЕНЕНИЕ 3: Переписываем массовое удаление
+  const handleBulkDelete = async () => {
       if (selectedTasks.size === 0) return;
-      if (window.confirm(`Вы уверены, что хотите удалить ${selectedTasks.size} задач?`)) {
+      const isConfirmed = await confirm({
+ title: 'Подтверждение удаления',
+  message: (
+    <>
+      <p>Вы уверены, что хотите удалить задачу?</p>
+      <p className="text-sm text-slate-500 mt-2">Связанный клиент: ...</p>
+    </>
+  ),
+  confirmButtonText: 'Удалить',
+  confirmButtonClass: 'bg-red-600 hover:bg-red-700'      });
+      if (isConfirmed) {
           onBulkDelete(Array.from(selectedTasks));
           setSelectedTasks(new Set());
       }
   };
-  // --- КОНЕЦ БЛОКА ИЗМЕНЕНИЙ ---
-
+  
+  // ИЗМЕНЕНИЕ 4: Создаем новый обработчик для удаления клиента
+  const handleDeleteClient = async () => {
+    const isConfirmed = await confirm({
+ title: 'Подтверждение удаления',
+  message: (
+    <>
+      <p>Вы уверены, что хотите удалить задачу?</p>
+      <p className="text-sm text-slate-500 mt-2">Связанный клиент: ...</p>
+    </>
+  ),
+  confirmButtonText: 'Удалить',
+  confirmButtonClass: 'bg-red-600 hover:bg-red-700'    });
+    if (isConfirmed) {
+      onDelete(legalEntity);
+    }
+  };
 
   const renderTabContent = () => {
     switch (activeTab) {
       case 'requisites':
-        // ... (без изменений)
         return (
           <div className="p-4 border border-slate-200 rounded-lg bg-slate-50 mt-4">
               <dl>
@@ -155,11 +170,8 @@ export const ClientDetailCard: React.FC<ClientDetailCardProps> = ({
               </dl>
           </div>
         );
-      
       case 'tasks': {
         const legalEntityMap = new Map<string, LegalEntity>([[legalEntity.id, legalEntity]]);
-        
-        // --- ИЗМЕНЕНИЕ: СОЗДАЕМ ДИНАМИЧЕСКИЙ HEADER ---
         const headerComponent = (
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-3">
@@ -180,92 +192,23 @@ export const ClientDetailCard: React.FC<ClientDetailCardProps> = ({
                 </>
               )}
             </div>
-            <button
-              onClick={() => onAddTask({ legalEntityId: legalEntity.id })}
-              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors shadow"
-            >
+            <button onClick={() => onAddTask({ legalEntityId: legalEntity.id })} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors shadow" >
               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" /></svg>
               Добавить задачу
             </button>
           </div>
         );
-
         return (
           <div className="h-full flex flex-col">
-            {/* --- ИЗМЕНЕНИЕ: ПЕРЕДАЕМ ПРАВИЛЬНЫЕ ПРОПСЫ --- */}
-            <ReusableTaskList
-              tasks={filteredTasks}
-              legalEntityMap={legalEntityMap}
-              selectedTaskIds={selectedTasks}
-              selectableTaskIds={selectableTaskIds}
-              onTaskSelect={handleTaskSelect}
-              onOpenDetail={onOpenTaskDetail}
-              onDeleteTask={onDeleteTask}
-              headerComponent={headerComponent}
-              emptyStateText="У этого клиента нет задач, соответствующих фильтру."
-              stickyTopOffset={0}
-            />
-            <FilterModal
-                isOpen={isFilterModalOpen}
-                onClose={() => setIsFilterModalOpen(false)}
-                clients={[legalEntity]}
-                availableYears={availableYears}
-                filters={filters}
-                onApplyFilters={setFilters}
-            />
+            <ReusableTaskList tasks={filteredTasks} legalEntityMap={legalEntityMap} selectedTaskIds={selectedTasks} selectableTaskIds={selectableTaskIds} onTaskSelect={handleTaskSelect} onOpenDetail={onOpenTaskDetail} onDeleteTask={onDeleteTask} headerComponent={headerComponent} emptyStateText="У этого клиента нет задач, соответствующих фильтру." stickyTopOffset={0}/>
+            <FilterModal isOpen={isFilterModalOpen} onClose={() => setIsFilterModalOpen(false)} clients={[legalEntity]} availableYears={availableYears} filters={filters} onApplyFilters={setFilters} />
           </div>
         );
       }
-
-      // ... (остальные 'case' без изменений)
-      case 'patents':
-        return (
-            <div className="mt-4 space-y-3">
-                {legalEntity.patents?.length ? legalEntity.patents.map((patent: Patent, index) => (
-                    <div key={index} className="p-4 border rounded-lg bg-slate-50">
-                        <p className="font-semibold">{patent.name}</p>
-                        <p className="text-sm text-slate-600">Срок действия: {new Date(patent.startDate).toLocaleDateString()} - {new Date(patent.endDate).toLocaleDateString()}</p>
-                    </div>
-                )) : <p className="text-slate-500 text-center py-8">Патенты не добавлены.</p>}
-            </div>
-        );
-
-      case 'credentials':
-         return (
-            <div className="mt-4 space-y-3">
-                {legalEntity.credentials?.length ? legalEntity.credentials.map((cred: Credential, index) => (
-                    <div key={index} className="p-4 border rounded-lg bg-slate-50">
-                        <p className="font-semibold">{cred.service}</p>
-                        <p className="text-sm text-slate-600">Логин: {cred.login}</p>
-                    </div>
-                )) : <p className="text-slate-500 text-center py-8">Учетные данные не добавлены.</p>}
-            </div>
-        );
-
-      case 'notes':
-        return (
-            <div className="mt-4 flex flex-col h-full">
-                <div className="flex-grow overflow-y-auto pr-2 space-y-4">
-                    {legalEntity.notes && legalEntity.notes.length > 0 ? (
-                        [...legalEntity.notes].reverse().map((note: Note) => (
-                            <div key={note.id} className="p-4 border rounded-lg bg-slate-50">
-                                <p className="text-sm text-slate-500 mb-2">
-                                    {new Date(note.createdAt).toLocaleString('ru-RU', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                                </p>
-                                <p className="whitespace-pre-wrap">{note.text}</p>
-                            </div>
-                        ))
-                    ) : (
-                        <p className="text-slate-500 text-center py-8">Заметок пока нет.</p>
-                    )}
-                </div>
-                <div className="flex-shrink-0">
-                    <AddNoteForm onAdd={(text) => onAddNote(legalEntity.id, text)} />
-                </div>
-            </div>
-        );
-      default:
-        return null;
+      case 'patents': return ( <div className="mt-4 space-y-3"> {legalEntity.patents?.length ? legalEntity.patents.map((patent: Patent, index) => ( <div key={index} className="p-4 border rounded-lg bg-slate-50"> <p className="font-semibold">{patent.name}</p> <p className="text-sm text-slate-600">Срок действия: {new Date(patent.startDate).toLocaleDateString()} - {new Date(patent.endDate).toLocaleDateString()}</p> </div> )) : <p className="text-slate-500 text-center py-8">Патенты не добавлены.</p>} </div> );
+      case 'credentials': return ( <div className="mt-4 space-y-3"> {legalEntity.credentials?.length ? legalEntity.credentials.map((cred: Credential, index) => ( <div key={index} className="p-4 border rounded-lg bg-slate-50"> <p className="font-semibold">{cred.service}</p> <p className="text-sm text-slate-600">Логин: {cred.login}</p> </div> )) : <p className="text-slate-500 text-center py-8">Учетные данные не добавлены.</p>} </div> );
+      case 'notes': return ( <div className="mt-4 flex flex-col h-full"> <div className="flex-grow overflow-y-auto pr-2 space-y-4"> {legalEntity.notes && legalEntity.notes.length > 0 ? ( [...legalEntity.notes].reverse().map((note: Note) => ( <div key={note.id} className="p-4 border rounded-lg bg-slate-50"> <p className="text-sm text-slate-500 mb-2"> {new Date(note.createdAt).toLocaleString('ru-RU', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })} </p> <p className="whitespace-pre-wrap">{note.text}</p> </div> )) ) : ( <p className="text-slate-500 text-center py-8">Заметок пока нет.</p> )} </div> <div className="flex-shrink-0"> <AddNoteForm onAdd={(text) => onAddNote(legalEntity.id, text)} /> </div> </div> );
+      default: return null;
     }
   };
   
@@ -276,9 +219,7 @@ export const ClientDetailCard: React.FC<ClientDetailCardProps> = ({
         : 'text-slate-600 hover:bg-slate-100'
     }`;
 
-
   return (
-    // ... (остальная часть JSX без изменений)
     <div className="bg-white p-6 rounded-lg shadow-md h-full flex flex-col">
         <div className="relative z-10 flex justify-between items-start pb-4 border-b border-slate-200">
           <div>
@@ -287,7 +228,8 @@ export const ClientDetailCard: React.FC<ClientDetailCardProps> = ({
           <div className="flex items-center gap-2 -mr-2">
               <button onClick={() =>onEdit(legalEntity)} className="p-2 text-slate-500 hover:text-indigo-600" title="Редактировать"><svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg></button>
               <button onClick={() => onArchive(legalEntity)} className="p-2 text-slate-500 hover:text-yellow-600" title="Архивировать"><svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg></button>
-              <button onClick={() => onDelete(legalEntity)} className="p-2 text-slate-500 hover:text-red-600" title="Удалить"><svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
+              {/* ИЗМЕНЕНИЕ 5: Обновляем onClick у кнопки удаления клиента */}
+              <button onClick={handleDeleteClient} className="p-2 text-slate-500 hover:text-red-600" title="Удалить"><svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
               <button onClick={onClose} className="p-2 text-slate-500 hover:text-slate-800" title="Закрыть"><svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
           </div>
         </div>

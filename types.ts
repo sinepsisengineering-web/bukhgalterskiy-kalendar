@@ -83,15 +83,12 @@ export enum RepeatFrequency {
   Yearly = 'yearly',
 }
 
-// --- ИЗМЕНЕНИЯ ЗДЕСЬ ---
 export enum ReminderSetting {
-    // None = 'none', // Убираем эту опцию
     OneHour = '1h',
     OneDay = '1d',
-    ThreeDays = '3d', // <-- ДОБАВЛЕНО
+    ThreeDays = '3d',
     OneWeek = '1w',
 }
-// --- КОНЕЦ ИЗМЕНЕНИЙ ---
 
 export interface Task {
   id: string;
@@ -107,4 +104,15 @@ export interface Task {
   isAutomatic: boolean;
   seriesId?: string; 
   isPeriodLocked?: boolean;
+}
+
+
+export interface ProgressInfo {
+  percent: number;
+}
+
+
+export interface UpdateMessage {
+  status: 'checking' | 'available' | 'info' | 'error' | 'downloaded';
+  text: string;
 }

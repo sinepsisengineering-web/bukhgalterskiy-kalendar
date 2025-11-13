@@ -1,17 +1,18 @@
 // src/components/TasksListView.tsx
 
 import React, { useState, useMemo } from 'react';
-import { Task, LegalEntity, TaskStatus } from '../types';
+import { Task, LegalEntity } from '../types';
 import { FilterModal, FilterState } from './FilterModal';
 import { isTaskLocked } from '../services/taskGenerator';
 import { ReusableTaskList } from './ReusableTaskList';
+import { useConfirmation } from '../contexts/ConfirmationProvider';
 
 interface TasksListViewProps {
     tasks: Task[];
     legalEntities: LegalEntity[];
     onOpenDetail: (tasks: Task[], date: Date) => void;
     onBulkUpdate: (taskIds: string[]) => void;
-    onBulkDelete: (taskIds: string[]) => void; // ИЗМЕНЕНИЕ 1: Новый пропс
+    onBulkDelete: (taskIds: string[]) => void;
     onDeleteTask: (taskId: string) => void;
     customAddTaskButton?: React.ReactNode;
 }
@@ -21,20 +22,19 @@ export const TasksListView: React.FC<TasksListViewProps> = ({
     legalEntities,
     onOpenDetail,
     onBulkUpdate,
-    onBulkDelete, // ИЗМЕНЕНИЕ 2: Получаем пропс
+    onBulkDelete,
     onDeleteTask,
     customAddTaskButton
-}) => {
+}) => { // <--- ВОТ ИСПРАВЛЕННАЯ СТРОКА
+    const confirm = useConfirmation();
+
     const [filters, setFilters] = useState<FilterState>({
         searchText: '', selectedClients: [], selectedYear: 'all', selectedStatuses: [],
     });
     const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
     const [selectedTasks, setSelectedTasks] = useState<Set<string>>(new Set());
 
-    const legalEntityMap = useMemo(() => {
-        return new Map(legalEntities.map(le => [le.id, le]));
-    }, [legalEntities]);
-
+    const legalEntityMap = useMemo(() => new Map(legalEntities.map(le => [le.id, le])), [legalEntities]);
     const availableYears = useMemo(() => Array.from(new Set(tasks.map(task => new Date(task.dueDate).getFullYear()))).sort((a, b) => a - b), [tasks]);
 
     const filteredTasks = useMemo(() => {
@@ -52,9 +52,7 @@ export const TasksListView: React.FC<TasksListViewProps> = ({
         });
     }, [tasks, filters, legalEntityMap, legalEntities.length]);
 
-    const selectableTaskIds = useMemo(() => new Set(
-        filteredTasks.filter(task => !isTaskLocked(task)).map(t => t.id)
-    ), [filteredTasks]);
+    const selectableTaskIds = useMemo(() => new Set(filteredTasks.filter(task => !isTaskLocked(task)).map(t => t.id)), [filteredTasks]);
 
     const handleSelectAll = () => setSelectedTasks(new Set(selectableTaskIds));
     const handleDeselectAll = () => setSelectedTasks(new Set());
@@ -73,11 +71,22 @@ export const TasksListView: React.FC<TasksListViewProps> = ({
         onBulkUpdate(Array.from(selectedTasks));
         setSelectedTasks(new Set());
     };
-
-    // ИЗМЕНЕНИЕ 3: Новый обработчик
-    const handleBulkDelete = () => {
+    
+    const handleBulkDelete = async () => {
         if (selectedTasks.size === 0) return;
-        if (window.confirm(`Вы уверены, что хотите удалить ${selectedTasks.size} задач? Это действие необратимо.`)) {
+
+        const isConfirmed = await confirm({
+ title: 'Подтверждение удаления',
+  message: (
+    <>
+      <p>Вы уверены, что хотите удалить задачу?</p>
+      <p className="text-sm text-slate-500 mt-2">Связанный клиент: ...</p>
+    </>
+  ),
+  confirmButtonText: 'Удалить',
+  confirmButtonClass: 'bg-red-600 hover:bg-red-700'        });
+
+        if (isConfirmed) {
             onBulkDelete(Array.from(selectedTasks));
             setSelectedTasks(new Set());
         }
@@ -102,7 +111,6 @@ export const TasksListView: React.FC<TasksListViewProps> = ({
                                 <div className="flex items-center gap-3">
                                     <span className="text-sm font-medium text-slate-700">Выбрано: {selectedTasks.size}</span>
                                     <button onClick={handleBulkComplete} className="px-3 py-1 text-sm bg-green-100 text-green-700 rounded hover:bg-green-200">Выполнить</button>
-                                    {/* ИЗМЕНЕНИЕ 4: Новая кнопка */}
                                     <button onClick={handleBulkDelete} className="px-3 py-1 text-sm bg-red-100 text-red-700 rounded hover:bg-red-200">Удалить</button>
                                     <button onClick={handleDeselectAll} className="px-3 py-1 text-sm bg-slate-100 text-slate-700 rounded hover:bg-slate-200">Снять</button>
                                 </div>

@@ -1,58 +1,38 @@
 // components/SettingsView.tsx
+
 import React, { useState, useEffect } from 'react';
-
-// ВАЖНО: Добавляем этот блок, чтобы TypeScript знал о window.electronAPI
-declare global {
-  interface Window {
-    electronAPI: {
-      getVersion: () => Promise<string>;
-      checkUpdates: () => void;
-      restartApp: () => void;
-      onUpdateMessage: (callback: (message: UpdateMessage) => void) => () => void;
-      onUpdateProgress: (callback: (progressInfo: ProgressInfo) => void) => () => void;
-    };
-  }
-}
-
-// Типы для информации о прогрессе и сообщениях
-interface ProgressInfo {
-  percent: number;
-}
-interface UpdateMessage {
-  status: 'checking' | 'available' | 'info' | 'error' | 'downloaded';
-  text: string;
-}
+import { useConfirmation } from '../contexts/ConfirmationProvider';
+// ==================== ФИНАЛЬНОЕ ИЗМЕНЕНИЕ: Импортируем типы ====================
+import { UpdateMessage, ProgressInfo } from '../types';
 
 export const SettingsView = ({ onClearData }: { onClearData: () => void; }) => {
+  const confirm = useConfirmation();
+  
   const [appVersion, setAppVersion] = useState('');
-  const [updateMessage, setUpdateMessage] = useState<UpdateMessage | null>(null);
+  const [updateMessage, setUpdateMessage] = useState<UpdateMessage | null>(null); 
   const [progressInfo, setProgressInfo] = useState<ProgressInfo | null>(null);
   const [isChecking, setIsChecking] = useState(false);
   const [permissionStatus, setPermissionStatus] = useState(Notification.permission);
   const [isSoundEnabled, setIsSoundEnabled] = useState(() => localStorage.getItem('soundEnabled') === 'true');
 
   useEffect(() => {
-    // Получаем версию приложения
     window.electronAPI.getVersion().then(version => setAppVersion(version));
 
-    // Подписываемся на сообщения
-    const removeMessageListener = window.electronAPI.onUpdateMessage((message: UpdateMessage) => {
+    const removeMessageListener = window.electronAPI.onUpdateMessage((message) => {
       setUpdateMessage(message);
       if (message.status !== 'checking' && message.status !== 'available') setIsChecking(false);
       if (message.status !== 'available') setProgressInfo(null);
     });
 
-    // Подписываемся на прогресс
-    const removeProgressListener = window.electronAPI.onUpdateProgress((info: ProgressInfo) => {
+    const removeProgressListener = window.electronAPI.onUpdateProgress((info) => {
       setProgressInfo(info);
     });
 
-    // Отписка при размонтировании компонента. Теперь это будет работать правильно!
     return () => {
       removeMessageListener();
       removeProgressListener();
     };
-  }, []); // Пустой массив зависимостей - эффект выполнится один раз
+  }, []);
 
   const handleRequestPermission = () => {
     Notification.requestPermission().then(setPermissionStatus);
@@ -72,10 +52,27 @@ export const SettingsView = ({ onClearData }: { onClearData: () => void; }) => {
   };
   
   const handleRestart = () => window.electronAPI.restartApp();
+  
+  const handleClearData = async () => {
+    const isConfirmed = await confirm({
+ title: 'Подтверждение удаления',
+  message: (
+    <>
+      <p>Вы уверены, что хотите удалить задачу?</p>
+      <p className="text-sm text-slate-500 mt-2">Связанный клиент: ...</p>
+    </>
+  ),
+  confirmButtonText: 'Удалить',
+  confirmButtonClass: 'bg-red-600 hover:bg-red-700'    });
 
+    if (isConfirmed) {
+      onClearData();
+    }
+  };
+
+  // JSX остается без изменений
   return (
     <div className="space-y-8 max-w-4xl mx-auto">
-      {/* Уведомления */}
       <div className="bg-white p-6 rounded-lg shadow-sm">
         <h2 className="text-xl font-semibold mb-4 text-gray-800">Уведомления</h2>
         <p className="text-sm text-gray-500 mb-4">Настройте напоминания о задачах на рабочем столе.</p>
@@ -92,8 +89,6 @@ export const SettingsView = ({ onClearData }: { onClearData: () => void; }) => {
           <span className="ml-2 text-sm text-gray-600">Включить звуковые оповещения</span>
         </label>
       </div>
-
-      {/* Обновление приложения */}
       <div className="bg-white p-6 rounded-lg shadow-sm">
         <div className="flex justify-between items-start">
             <div>
@@ -110,12 +105,10 @@ export const SettingsView = ({ onClearData }: { onClearData: () => void; }) => {
             {updateMessage?.status === 'downloaded' && <button onClick={handleRestart} className="mt-4 w-full px-4 py-2 bg-green-600 text-white font-semibold rounded-md shadow-sm hover:bg-green-700">Перезапустить и установить</button>}
         </div>}
       </div>
-
-      {/* Управление данными */}
       <div className="bg-red-50 p-6 rounded-lg border border-red-200">
         <h2 className="text-xl font-semibold mb-2 text-red-800">Управление данными</h2>
         <p className="text-sm text-red-700 mb-4">Это действие приведет к сбросу приложения к исходному состоянию. Все ваши клиенты и задачи будут <strong>безвозвратно</strong> удалены.</p>
-        <button onClick={onClearData} className="px-5 py-2 bg-red-600 text-white font-semibold rounded-md shadow-sm hover:bg-red-700">Очистить локальные данные</button>
+        <button onClick={handleClearData} className="px-5 py-2 bg-red-600 text-white font-semibold rounded-md shadow-sm hover:bg-red-700">Очистить локальные данные</button>
       </div>
     </div>
   );

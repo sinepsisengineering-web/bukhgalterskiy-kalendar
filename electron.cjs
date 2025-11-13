@@ -1,5 +1,5 @@
 // electron.cjs
-const { app, BrowserWindow, ipcMain, Notification } = require('electron');
+const { app, BrowserWindow, ipcMain, Notification, dialog } = require('electron'); // <-- ИЗМЕНЕНИЕ 1: Добавляем 'dialog'
 const path = require('path');
 const { autoUpdater } = require('electron-updater');
 const log = require('electron-log');
@@ -49,7 +49,31 @@ app.whenReady().then(() => {
   }
 });
 
-/* --- Секция логики обновлений --- */
+/* --- Секция обработчиков IPC --- */
+
+// ==================== ИЗМЕНЕНИЕ 2: ДОБАВЛЯЕМ НОВЫЙ ОБРАБОТЧИК ДИАЛОГА ====================
+ipcMain.handle('show-confirm-dialog', async (event, options) => {
+  const focusedWindow = BrowserWindow.fromWebContents(event.sender);
+  if (!focusedWindow) {
+    return false;
+  }
+  
+  const result = await dialog.showMessageBox(focusedWindow, {
+    type: 'question',
+    buttons: ['Отмена', 'Удалить'],
+    defaultId: 0,
+    cancelId: 0,
+    title: options.title || 'Подтверждение действия',
+    message: options.message || 'Вы уверены?',
+    detail: options.detail || 'Это действие нельзя будет отменить.',
+  });
+
+  // Возвращаем true, если нажали "Удалить" (кнопка с индексом 1)
+  return result.response === 1; 
+});
+// =======================================================================================
+
+
 ipcMain.handle('get-app-version', () => app.getVersion());
 
 ipcMain.on('check-for-updates', () => {
@@ -66,6 +90,16 @@ ipcMain.on('restart_app', () => {
     autoUpdater.quitAndInstall();
 });
 
+ipcMain.on('show-notification', (event, { title, body }) => {
+  if (!Notification.isSupported()) {
+    return;
+  }
+  const notification = new Notification({ title, body });
+  notification.show();
+});
+
+
+/* --- Секция логики обновлений --- */
 autoUpdater.on('checking-for-update', () => sendUpdateMessage({ status: 'checking', text: 'Поиск обновлений...' }));
 autoUpdater.on('update-available', (info) => sendUpdateMessage({ status: 'available', text: `Найдено обновление v${info.version}. Начинается скачивание...` }));
 autoUpdater.on('update-not-available', () => sendUpdateMessage({ status: 'info', text: 'У вас установлена последняя версия.' }));
@@ -76,24 +110,6 @@ autoUpdater.on('download-progress', (progressInfo) => {
   }
 });
 autoUpdater.on('update-downloaded', () => sendUpdateMessage({ status: 'downloaded', text: 'Обновление скачано и готово к установке.' }));
-
-
-/* --- Секция Уведомлений (упрощенная) --- */
-ipcMain.on('show-notification', (event, { title, body }) => {
-  if (!Notification.isSupported()) {
-    return;
-  }
-  
-  const notification = new Notification({
-    title: title,
-    body: body,
-    // Мы не указываем свойство 'sound',
-    // чтобы использовался звук по умолчанию
-  });
-
-  notification.show();
-});
-/* --- Конец секции --- */
 
 
 /* --- Стандартная секция для окон --- */
