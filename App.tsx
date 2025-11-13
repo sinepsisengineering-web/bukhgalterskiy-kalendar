@@ -62,15 +62,12 @@ const App: React.FC = () => {
     const [isLegalEntityModalOpen, setIsLegalEntityModalOpen] = useState(false);
     const [legalEntityToEdit, setLegalEntityToEdit] = useState<LegalEntity | null>(null);
 
-    // ==================== ВОТ ИСПРАВЛЕННЫЙ БЛОК ====================
     const { activeLegalEntities, archivedLegalEntities } = useMemo(() => {
         const active: LegalEntity[] = [];
         const archived: LegalEntity[] = [];
         legalEntities.forEach(le => (le.isArchived ? archived.push(le) : active.push(le)));
-        // Мы возвращаем объект с ключами, которые НЕ конфликтуют с внешними переменными
         return { activeLegalEntities: active, archivedLegalEntities: archived };
     }, [legalEntities]);
-    // =============================================================
     
     const legalEntityMap = useMemo(() => new Map(legalEntities.map(le => [le.id, le])), [legalEntities]);
 
@@ -104,19 +101,70 @@ const App: React.FC = () => {
 
     const handleAddNote = (legalEntityId: string, noteText: string) => {
         const newNote: Note = { id: `note-${Date.now()}-${Math.random()}`, text: noteText, createdAt: new Date() };
+        let updatedSelectedEntity: LegalEntity | undefined;
+        
         const updatedEntities = legalEntities.map(le => {
             if (le.id === legalEntityId) {
-                const updatedNotes = le.notes ? [...le.notes, newNote] : [newNote];
-                return { ...le, notes: updatedNotes };
+                const updatedLe = { ...le, notes: [...(le.notes || []), newNote] };
+                if (selectedLegalEntity?.id === legalEntityId) {
+                    updatedSelectedEntity = updatedLe;
+                }
+                return updatedLe;
             }
             return le;
         });
+
         setLegalEntities(updatedEntities);
-        if (selectedLegalEntity && selectedLegalEntity.id === legalEntityId) {
-            const updatedSelectedEntity = updatedEntities.find(le => le.id === legalEntityId);
-            if (updatedSelectedEntity) setSelectedLegalEntity(updatedSelectedEntity);
+        if (updatedSelectedEntity) {
+            setSelectedLegalEntity(updatedSelectedEntity);
         }
     };
+
+    // <<< НАЧАЛО НОВЫХ ФУНКЦИЙ >>>
+    const handleEditNote = (legalEntityId: string, noteId: string, newText: string) => {
+        let updatedSelectedEntity: LegalEntity | undefined;
+        
+        const updatedEntities = legalEntities.map(le => {
+            if (le.id === legalEntityId) {
+                const updatedNotes = (le.notes || []).map(note => 
+                    note.id === noteId ? { ...note, text: newText } : note
+                );
+                const updatedLe = { ...le, notes: updatedNotes };
+                if (selectedLegalEntity?.id === legalEntityId) {
+                    updatedSelectedEntity = updatedLe;
+                }
+                return updatedLe;
+            }
+            return le;
+        });
+
+        setLegalEntities(updatedEntities);
+        if (updatedSelectedEntity) {
+            setSelectedLegalEntity(updatedSelectedEntity);
+        }
+    };
+
+    const handleDeleteNote = (legalEntityId: string, noteId: string) => {
+        let updatedSelectedEntity: LegalEntity | undefined;
+
+        const updatedEntities = legalEntities.map(le => {
+            if (le.id === legalEntityId) {
+                const updatedNotes = (le.notes || []).filter(note => note.id !== noteId);
+                const updatedLe = { ...le, notes: updatedNotes };
+                 if (selectedLegalEntity?.id === legalEntityId) {
+                    updatedSelectedEntity = updatedLe;
+                }
+                return updatedLe;
+            }
+            return le;
+        });
+
+        setLegalEntities(updatedEntities);
+        if (updatedSelectedEntity) {
+            setSelectedLegalEntity(updatedSelectedEntity);
+        }
+    };
+    // <<< КОНЕЦ НОВЫХ ФУНКЦИЙ >>>
 
     const handleArchiveLegalEntity = (entity: LegalEntity) => {
         setLegalEntities(prev => prev.map(le => (le.id === entity.id ? { ...le, isArchived: true } : le)));
@@ -150,7 +198,24 @@ const App: React.FC = () => {
     const renderContent = () => {
         if (selectedLegalEntity && activeView === 'clients') {
             const entityTasks = tasks.filter(task => task.legalEntityId === selectedLegalEntity.id);
-            return <ClientDetailCard legalEntity={selectedLegalEntity} tasks={entityTasks} onClose={() => setSelectedLegalEntity(null)} onEdit={handleOpenLegalEntityForm} onArchive={handleArchiveLegalEntity} onDelete={handleDeleteLegalEntity} onAddTask={() => handleOpenNewTaskForm({ legalEntityId: selectedLegalEntity.id })} onOpenTaskDetail={handleOpenTaskDetail} onBulkComplete={handleBulkComplete} onBulkDelete={handleBulkDelete} onDeleteTask={handleDeleteTask} onAddNote={handleAddNote} />;
+            // <<< НАЧАЛО ОБНОВЛЕНИЯ PROPS >>>
+            return <ClientDetailCard 
+                legalEntity={selectedLegalEntity} 
+                tasks={entityTasks} 
+                onClose={() => setSelectedLegalEntity(null)} 
+                onEdit={handleOpenLegalEntityForm} 
+                onArchive={handleArchiveLegalEntity} 
+                onDelete={handleDeleteLegalEntity} 
+                onAddTask={() => handleOpenNewTaskForm({ legalEntityId: selectedLegalEntity.id })} 
+                onOpenTaskDetail={handleOpenTaskDetail} 
+                onBulkComplete={handleBulkComplete} 
+                onBulkDelete={handleBulkDelete} 
+                onDeleteTask={handleDeleteTask} 
+                onAddNote={handleAddNote}
+                onEditNote={handleEditNote}
+                onDeleteNote={handleDeleteNote}
+            />;
+            // <<< КОНЕЦ ОБНОВЛЕНИЯ PROPS >>>
         }
         switch (activeView) {
             case 'calendar': return <Calendar tasks={tasks} legalEntities={activeLegalEntities} onUpdateTaskStatus={() => {}} onAddTask={(date) => handleOpenNewTaskForm({ dueDate: date })} onOpenDetail={handleOpenTaskDetail} onDeleteTask={handleDeleteTask} />;

@@ -146,7 +146,7 @@ export const LegalEntityForm: React.FC<LegalEntityFormProps> = ({ legalEntity, o
         )}
         {showNdsValueInput && (
              <div>
-                 <label htmlFor={`ndsValue-${legalEntity.id}`} className="text-sm font-medium text-slate-700">Сумма НДС (если требуется)</label>
+                 <label htmlFor={`ndsValue-${legalEntity.id}`} className="text-sm font-medium text-slate-700">Ставка НДС (если требуется)</label>
                  <input id={`ndsValue-${legalEntity.id}`} name="ndsValue" type="text" value={legalEntity.ndsValue || ''} onChange={handleChange} className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-slate-900"/>
              </div>
         )}

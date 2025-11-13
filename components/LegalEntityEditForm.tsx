@@ -125,15 +125,12 @@ export const LegalEntityEditForm: React.FC<LegalEntityEditFormProps> = ({ legalE
         </div>
         <div className="flex items-center gap-6">
             {showNdsCheckbox && <div className="flex items-center"><input id={`isNdsPayer-${formData.id}`} name="isNdsPayer" type="checkbox" checked={formData.isNdsPayer} onChange={handleCheckboxChange} className="h-4 w-4 rounded"/><label htmlFor={`isNdsPayer-${formData.id}`} className="ml-2 block text-sm">Плательщик НДС</label></div>}
-            {showNdsValueInput && <div><label htmlFor={`ndsValue-${formData.id}`} className="text-sm">Сумма НДС (если требуется)</label><input id={`ndsValue-${formData.id}`} name="ndsValue" type="text" value={formData.ndsValue || ''} onChange={handleChange} className="mt-1 block w-full px-3 py-2 border rounded-md"/></div>}
+            {showNdsValueInput && <div><label htmlFor={`ndsValue-${formData.id}`} className="text-sm">Ставка НДС (если требуется)</label><input id={`ndsValue-${formData.id}`} name="ndsValue" type="text" value={formData.ndsValue || ''} onChange={handleChange} className="mt-1 block w-full px-3 py-2 border rounded-md"/></div>}
         </div>
         <div className="flex items-center">
             <input id={`hasEmployees-${formData.id}`} name="hasEmployees" type="checkbox" checked={formData.hasEmployees} onChange={handleCheckboxChange} className="h-4 w-4 rounded"/>
             <label htmlFor={`hasEmployees-${formData.id}`} className="ml-2 block text-sm">Есть наемные сотрудники</label>
         </div>
-        {showPatentsBlock && <div>...</div>}
-        <div><label className="block text-sm">Заметки</label><textarea name="notes" value={formData.notes || ''} onChange={handleChange} rows={3} className="mt-1 block w-full rounded-md"></textarea></div>
-        <div>...</div>
 
         <div className="pt-4 flex justify-end gap-4">
             <button type="button" onClick={onCancel} className="px-4 py-2 text-sm font-semibold text-slate-700 bg-white border border-slate-300 rounded-md hover:bg-slate-50">Отмена</button>

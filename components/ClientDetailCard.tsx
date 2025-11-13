@@ -5,8 +5,8 @@ import { LegalEntity, Task, Patent, Credential, Note, TaskStatus } from '../type
 import { ReusableTaskList } from './ReusableTaskList';
 import { FilterModal, FilterState } from './FilterModal';
 import { isTaskLocked } from '../services/taskGenerator';
-// ИЗМЕНЕНИЕ 1: Импортируем хук
 import { useConfirmation } from '../contexts/ConfirmationProvider';
+
 type DetailTab = 'requisites' | 'tasks' | 'patents' | 'credentials' | 'notes';
 
 interface ClientDetailCardProps {
@@ -22,9 +22,12 @@ interface ClientDetailCardProps {
   onBulkDelete: (taskIds: string[]) => void;
   onDeleteTask: (taskId: string) => void;
   onAddNote: (legalEntityId: string, noteText: string) => void;
+  // <<< НОВОЕ СВОЙСТВО ДЛЯ РЕДАКТИРОВАНИЯ ЗАМЕТКИ >>>
+  onEditNote: (legalEntityId: string, noteId: string, newText: string) => void;
+  // <<< НОВОЕ СВОЙСТВО ДЛЯ УДАЛЕНИЯ ЗАМЕТКИ >>>
+  onDeleteNote: (legalEntityId: string, noteId: string) => void;
 }
 
-// Компоненты DetailRow и AddNoteForm (полные версии)
 const DetailRow: React.FC<{ label: string; value?: string | React.ReactNode }> = ({ label, value }) => (
     <div className="py-3 sm:grid sm:grid-cols-3 sm:gap-4 border-t border-slate-200 first:border-t-0">
       <dt className="text-sm font-medium text-slate-500">{label}</dt>
@@ -66,9 +69,10 @@ const AddNoteForm: React.FC<{ onAdd: (text: string) => void }> = ({ onAdd }) => 
 
 export const ClientDetailCard: React.FC<ClientDetailCardProps> = ({ 
   legalEntity, tasks, onClose, onEdit, onArchive, onDelete, onAddTask,
-  onOpenTaskDetail, onBulkComplete, onBulkDelete, onDeleteTask, onAddNote
+  onOpenTaskDetail, onBulkComplete, onBulkDelete, onDeleteTask, onAddNote,
+  onEditNote, // <<< ПОЛУЧАЕМ НОВЫЙ ПРОПС
+  onDeleteNote // <<< ПОЛУЧАЕМ НОВЫЙ ПРОПС
 }) => {
-  // ИЗМЕНЕНИЕ 2: Инициализируем хук
   const confirm = useConfirmation();
 
   const [activeTab, setActiveTab] = useState<DetailTab>('requisites');
@@ -76,6 +80,11 @@ export const ClientDetailCard: React.FC<ClientDetailCardProps> = ({
   const [filters, setFilters] = useState<FilterState>({
     searchText: '', selectedClients: [], selectedYear: 'all', selectedStatuses: [],
   });
+
+  // <<< НАЧАЛО НОВЫХ СОСТОЯНИЙ ДЛЯ РЕДАКТИРОВАНИЯ ЗАМЕТОК >>>
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [editingNoteText, setEditingNoteText] = useState('');
+  // <<< КОНЕЦ НОВЫХ СОСТОЯНИЙ >>>
 
   const availableYears = useMemo(() => 
     Array.from(new Set(tasks.map(task => new Date(task.dueDate).getFullYear()))).sort((a, b) => a - b), 
@@ -115,41 +124,61 @@ export const ClientDetailCard: React.FC<ClientDetailCardProps> = ({
       setSelectedTasks(new Set());
   };
   
-  // ИЗМЕНЕНИЕ 3: Переписываем массовое удаление
   const handleBulkDelete = async () => {
       if (selectedTasks.size === 0) return;
       const isConfirmed = await confirm({
- title: 'Подтверждение удаления',
-  message: (
-    <>
-      <p>Вы уверены, что хотите удалить задачу?</p>
-      <p className="text-sm text-slate-500 mt-2">Связанный клиент: ...</p>
-    </>
-  ),
-  confirmButtonText: 'Удалить',
-  confirmButtonClass: 'bg-red-600 hover:bg-red-700'      });
+        title: 'Подтверждение удаления',
+        message: 'Вы уверены, что хотите удалить выбранные задачи?',
+        confirmButtonText: 'Удалить',
+        confirmButtonClass: 'bg-red-600 hover:bg-red-700'
+      });
       if (isConfirmed) {
           onBulkDelete(Array.from(selectedTasks));
           setSelectedTasks(new Set());
       }
   };
   
-  // ИЗМЕНЕНИЕ 4: Создаем новый обработчик для удаления клиента
   const handleDeleteClient = async () => {
     const isConfirmed = await confirm({
- title: 'Подтверждение удаления',
-  message: (
-    <>
-      <p>Вы уверены, что хотите удалить задачу?</p>
-      <p className="text-sm text-slate-500 mt-2">Связанный клиент: ...</p>
-    </>
-  ),
-  confirmButtonText: 'Удалить',
-  confirmButtonClass: 'bg-red-600 hover:bg-red-700'    });
+      title: 'Подтверждение удаления',
+      message: `Вы уверены, что хотите удалить клиента «${legalEntity.name}»? Это действие нельзя будет отменить.`,
+      confirmButtonText: 'Удалить',
+      confirmButtonClass: 'bg-red-600 hover:bg-red-700'
+    });
     if (isConfirmed) {
       onDelete(legalEntity);
     }
   };
+
+  // <<< НАЧАЛО НОВЫХ ОБРАБОТЧИКОВ ДЛЯ ЗАМЕТОК >>>
+  const handleStartEdit = (note: Note) => {
+    setEditingNoteId(note.id);
+    setEditingNoteText(note.text);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingNoteId(null);
+    setEditingNoteText('');
+  };
+
+  const handleSaveNote = () => {
+    if (!editingNoteId || !editingNoteText.trim()) return;
+    onEditNote(legalEntity.id, editingNoteId, editingNoteText.trim());
+    handleCancelEdit(); // Сбрасываем состояние редактирования после сохранения
+  };
+  
+  const handleDeleteNote = async (noteId: string) => {
+    const isConfirmed = await confirm({
+      title: 'Подтвердить удаление',
+      message: 'Вы уверены, что хотите удалить эту заметку?',
+      confirmButtonText: 'Удалить',
+      confirmButtonClass: 'bg-red-600 hover:bg-red-700'
+    });
+    if (isConfirmed) {
+      onDeleteNote(legalEntity.id, noteId);
+    }
+  };
+  // <<< КОНЕЦ НОВЫХ ОБРАБОТЧИКОВ >>>
 
   const renderTabContent = () => {
     switch (activeTab) {
@@ -207,7 +236,80 @@ export const ClientDetailCard: React.FC<ClientDetailCardProps> = ({
       }
       case 'patents': return ( <div className="mt-4 space-y-3"> {legalEntity.patents?.length ? legalEntity.patents.map((patent: Patent, index) => ( <div key={index} className="p-4 border rounded-lg bg-slate-50"> <p className="font-semibold">{patent.name}</p> <p className="text-sm text-slate-600">Срок действия: {new Date(patent.startDate).toLocaleDateString()} - {new Date(patent.endDate).toLocaleDateString()}</p> </div> )) : <p className="text-slate-500 text-center py-8">Патенты не добавлены.</p>} </div> );
       case 'credentials': return ( <div className="mt-4 space-y-3"> {legalEntity.credentials?.length ? legalEntity.credentials.map((cred: Credential, index) => ( <div key={index} className="p-4 border rounded-lg bg-slate-50"> <p className="font-semibold">{cred.service}</p> <p className="text-sm text-slate-600">Логин: {cred.login}</p> </div> )) : <p className="text-slate-500 text-center py-8">Учетные данные не добавлены.</p>} </div> );
-      case 'notes': return ( <div className="mt-4 flex flex-col h-full"> <div className="flex-grow overflow-y-auto pr-2 space-y-4"> {legalEntity.notes && legalEntity.notes.length > 0 ? ( [...legalEntity.notes].reverse().map((note: Note) => ( <div key={note.id} className="p-4 border rounded-lg bg-slate-50"> <p className="text-sm text-slate-500 mb-2"> {new Date(note.createdAt).toLocaleString('ru-RU', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })} </p> <p className="whitespace-pre-wrap">{note.text}</p> </div> )) ) : ( <p className="text-slate-500 text-center py-8">Заметок пока нет.</p> )} </div> <div className="flex-shrink-0"> <AddNoteForm onAdd={(text) => onAddNote(legalEntity.id, text)} /> </div> </div> );
+      
+      // <<< НАЧАЛО ОБНОВЛЕННОГО БЛОКА ДЛЯ ЗАМЕТОК >>>
+      case 'notes': 
+        return ( 
+          <div className="mt-4 flex flex-col h-full"> 
+            <div className="flex-grow overflow-y-auto pr-2 space-y-4"> 
+              {legalEntity.notes && legalEntity.notes.length > 0 ? ( 
+                [...legalEntity.notes].reverse().map((note: Note) => ( 
+                  <div key={note.id} className="p-4 border rounded-lg bg-slate-50">
+                    {editingNoteId === note.id ? (
+                      // РЕЖИМ РЕДАКТИРОВАНИЯ
+                      <div>
+                        <textarea
+                          value={editingNoteText}
+                          onChange={(e) => setEditingNoteText(e.target.value)}
+                          className="w-full p-2 border border-slate-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
+                          rows={4}
+                        />
+                        <div className="flex justify-end gap-2 mt-2">
+                          <button
+                            onClick={handleCancelEdit}
+                            className="px-3 py-1 text-sm bg-slate-200 text-slate-700 rounded-md hover:bg-slate-300"
+                          >
+                            Отмена
+                          </button>
+                          <button
+                            onClick={handleSaveNote}
+                            className="px-3 py-1 text-sm bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
+                          >
+                            Сохранить
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      // РЕЖИМ ОТОБРАЖЕНИЯ
+                      <div className="flex justify-between items-start group">
+                        <div>
+                          <p className="text-sm text-slate-500 mb-2"> 
+                            {new Date(note.createdAt).toLocaleString('ru-RU', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })} 
+                          </p> 
+                          <p className="whitespace-pre-wrap">{note.text}</p> 
+                        </div>
+                        
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 ml-4">
+                          <button 
+                            onClick={() => handleStartEdit(note)}
+                            className="p-1 text-slate-400 hover:text-indigo-600 rounded-full"
+                            title="Редактировать заметку"
+                          >
+                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
+                          </button>
+                          <button 
+                            onClick={() => handleDeleteNote(note.id)}
+                            className="p-1 text-slate-400 hover:text-red-600 rounded-full"
+                            title="Удалить заметку"
+                          >
+                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                          </button>
+                        </div>
+                      </div> 
+                    )}
+                  </div>
+                )) 
+              ) : ( 
+                <p className="text-slate-500 text-center py-8">Заметок пока нет.</p> 
+              )} 
+            </div> 
+            <div className="flex-shrink-0"> 
+              <AddNoteForm onAdd={(text) => onAddNote(legalEntity.id, text)} /> 
+            </div> 
+          </div> 
+        );
+      // <<< КОНЕЦ ОБНОВЛЕННОГО БЛОКА >>>
+      
       default: return null;
     }
   };
@@ -228,7 +330,6 @@ export const ClientDetailCard: React.FC<ClientDetailCardProps> = ({
           <div className="flex items-center gap-2 -mr-2">
               <button onClick={() =>onEdit(legalEntity)} className="p-2 text-slate-500 hover:text-indigo-600" title="Редактировать"><svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg></button>
               <button onClick={() => onArchive(legalEntity)} className="p-2 text-slate-500 hover:text-yellow-600" title="Архивировать"><svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg></button>
-              {/* ИЗМЕНЕНИЕ 5: Обновляем onClick у кнопки удаления клиента */}
               <button onClick={handleDeleteClient} className="p-2 text-slate-500 hover:text-red-600" title="Удалить"><svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
               <button onClick={onClose} className="p-2 text-slate-500 hover:text-slate-800" title="Закрыть"><svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
           </div>
