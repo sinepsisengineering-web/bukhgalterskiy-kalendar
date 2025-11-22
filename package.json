@@ -43,14 +43,15 @@
       "dist/**/*",
       "electron.cjs",
       "preload.js",
-      "package.json"
+      "package.json",
+      "icon.ico" 
     ],
     "directories": {
       "output": "release"
     },
     "win": {
       "target": "nsis",
-      "icon": "assets/icon.ico"
+      "icon": "icon.ico"
     },
     "mac": {
       "target": "dmg",
