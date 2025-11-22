@@ -1,22 +1,28 @@
 // electron.cjs
-const { app, BrowserWindow, ipcMain, Notification, dialog, Tray, Menu, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain, Notification, dialog, Tray, Menu, nativeImage, powerSaveBlocker } = require('electron');
 const path = require('path');
 const { autoUpdater } = require('electron-updater');
 const log = require('electron-log');
 
-// Разрешаем звук (политика автовоспроизведения)
+// 1. БЛОКИРОВКА ЭНЕРГОСБЕРЕЖЕНИЯ
+// Критически важно для таймеров: запрещаем системе "усыплять" процесс в фоне
+powerSaveBlocker.start('prevent-app-suspension');
+
+// 2. ПОЛИТИКА ЗВУКА
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 
 const isDev = !app.isPackaged;
 let win;
 let tray = null;
 
-// === ВАЖНОЕ ИЗМЕНЕНИЕ 1: Устанавливаем ID приложения для Windows ===
-// Этот ID должен совпадать с "appId" в вашем package.json
+// 3. ХРАНИЛИЩЕ УВЕДОМЛЕНИЙ
+// Чтобы сборщик мусора (Garbage Collection) не удалял уведомления до их показа
+const activeNotifications = new Set();
+
+// 4. ID ПРИЛОЖЕНИЯ
 if (process.platform === 'win32') {
   app.setAppUserModelId('com.buh-assistant.app');
 }
-// ==================================================================
 
 const gotTheLock = app.requestSingleInstanceLock();
 
@@ -29,6 +35,7 @@ if (!gotTheLock) {
   autoUpdater.logger = log;
   log.info('Приложение запускается...');
 
+  // Обработка повторного запуска (клик по ярлыку, когда приложение уже работает)
   app.on('second-instance', (event, commandLine, workingDirectory) => {
     if (win) {
       if (win.isMinimized()) win.restore();
@@ -88,7 +95,7 @@ if (!gotTheLock) {
       icon: path.join(__dirname, 'icon.ico'),
       webPreferences: {
         preload: path.join(__dirname, 'preload.js'),
-        backgroundThrottling: false 
+        backgroundThrottling: false // Таймеры не будут замедляться в фоне
       }
     });
 
@@ -174,29 +181,52 @@ if (!gotTheLock) {
       autoUpdater.quitAndInstall();
   });
 
-  // === ВАЖНОЕ ИЗМЕНЕНИЕ 2: Улучшенный обработчик уведомлений ===
+  // === ГЛАВНОЕ ИЗМЕНЕНИЕ: Умная система уведомлений ===
   ipcMain.on('show-notification', (event, { title, body }) => {
-    if (!Notification.isSupported()) {
-      return;
-    }
     
-    const notification = new Notification({ 
-      title: title, 
-      body: body,
-      silent: false, // Явно требуем звук
-      icon: path.join(__dirname, 'icon.ico') // Добавляем иконку в само уведомление
-    });
-    
-    notification.show();
-    
-    // Дополнительно: если кликнуть по уведомлению, разворачиваем окно
-    notification.on('click', () => {
-      if (win) {
-        if (win.isMinimized()) win.restore();
-        if (!win.isVisible()) win.show();
-        win.focus();
+    // 1. ВИЗУАЛЬНАЯ ТРЕВОГА (Обход режима "Не беспокоить")
+    if (win) {
+      // Вытаскиваем иконку из-под стрелочки ^ на главную панель
+      win.setSkipTaskbar(false);
+
+      // Если окно скрыто - делаем его активным на панели задач (но свернутым)
+      if (!win.isVisible()) {
+        win.showInactive();
+        win.minimize(); 
       }
-    });
+
+      // Заставляем иконку мигать оранжевым
+      win.flashFrame(true);
+    }
+
+    // 2. СТАНДАРТНОЕ УВЕДОМЛЕНИЕ
+    if (Notification.isSupported()) {
+      const notification = new Notification({ 
+        title: title, 
+        body: body,
+        silent: false, 
+        icon: path.join(__dirname, 'icon.ico'),
+        urgency: 'critical'
+      });
+      
+      // Сохраняем, чтобы GC не удалил
+      activeNotifications.add(notification);
+      
+      notification.show();
+      
+      notification.on('click', () => {
+        if (win) {
+          if (win.isMinimized()) win.restore();
+          if (!win.isVisible()) win.show();
+          win.focus();
+          win.flashFrame(false); // Прекращаем мигать при клике
+        }
+        activeNotifications.delete(notification);
+      });
+
+      notification.on('close', () => activeNotifications.delete(notification));
+      notification.on('failed', () => activeNotifications.delete(notification));
+    }
   });
   // =============================================================
 
@@ -221,7 +251,7 @@ if (!gotTheLock) {
 
   app.on('window-all-closed', () => { 
     if (process.platform !== 'darwin') {
-      // Пусто
+      // Пусто (оставляем процесс живым)
     }
   });
 
