@@ -4,13 +4,19 @@ const path = require('path');
 const { autoUpdater } = require('electron-updater');
 const log = require('electron-log');
 
-// === ВАЖНОЕ ИЗМЕНЕНИЕ 1: Разрешаем звук без взаимодействия пользователя (для автозапуска) ===
+// Разрешаем звук (политика автовоспроизведения)
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
-// =========================================================================================
 
 const isDev = !app.isPackaged;
 let win;
 let tray = null;
+
+// === ВАЖНОЕ ИЗМЕНЕНИЕ 1: Устанавливаем ID приложения для Windows ===
+// Этот ID должен совпадать с "appId" в вашем package.json
+if (process.platform === 'win32') {
+  app.setAppUserModelId('com.buh-assistant.app');
+}
+// ==================================================================
 
 const gotTheLock = app.requestSingleInstanceLock();
 
@@ -82,10 +88,7 @@ if (!gotTheLock) {
       icon: path.join(__dirname, 'icon.ico'),
       webPreferences: {
         preload: path.join(__dirname, 'preload.js'),
-        
-        // === ВАЖНОЕ ИЗМЕНЕНИЕ 2: Отключаем заморозку таймеров в фоне ===
         backgroundThrottling: false 
-        // =============================================================
       }
     });
 
@@ -103,7 +106,6 @@ if (!gotTheLock) {
       win.show(); 
     } else {
       win.loadFile(path.join(__dirname, 'dist', 'index.html'));
-      
       if (!startHidden) {
         win.show();
       }
@@ -123,7 +125,6 @@ if (!gotTheLock) {
   });
 
   /* --- Секция обработчиков IPC --- */
-
   ipcMain.handle('get-auto-launch', () => {
     const settings = app.getLoginItemSettings();
     return settings.openAtLogin;
@@ -134,23 +135,18 @@ if (!gotTheLock) {
       log.info('Автозапуск работает только в упакованном приложении.');
       return;
     }
-
     app.setLoginItemSettings({
       openAtLogin: enable,
       openAsHidden: true, 
       path: app.getPath('exe'),
       args: ['--hidden']
     });
-    
     log.info(`Автозапуск установлен в значение: ${enable}`);
   });
 
   ipcMain.handle('show-confirm-dialog', async (event, options) => {
     const focusedWindow = BrowserWindow.fromWebContents(event.sender);
-    if (!focusedWindow) {
-      return false;
-    }
-    
+    if (!focusedWindow) { return false; }
     const result = await dialog.showMessageBox(focusedWindow, {
       type: 'question',
       buttons: ['Отмена', 'Удалить'],
@@ -160,7 +156,6 @@ if (!gotTheLock) {
       message: options.message || 'Вы уверены?',
       detail: options.detail || 'Это действие нельзя будет отменить.',
     });
-
     return result.response === 1; 
   });
 
@@ -168,7 +163,6 @@ if (!gotTheLock) {
 
   ipcMain.on('check-for-updates', () => {
     if (!isDev) {
-      log.info('Запуск проверки обновлений по кнопке...');
       autoUpdater.checkForUpdates();
     } else {
       sendUpdateMessage({ status: 'info', text: 'Проверка обновлений не работает в режиме разработки.' });
@@ -176,18 +170,35 @@ if (!gotTheLock) {
   });
 
   ipcMain.on('restart_app', () => {
-      log.info('Получена команда перезапуска для установки обновления.');
       app.isQuitting = true;
       autoUpdater.quitAndInstall();
   });
 
+  // === ВАЖНОЕ ИЗМЕНЕНИЕ 2: Улучшенный обработчик уведомлений ===
   ipcMain.on('show-notification', (event, { title, body }) => {
     if (!Notification.isSupported()) {
       return;
     }
-    const notification = new Notification({ title, body });
+    
+    const notification = new Notification({ 
+      title: title, 
+      body: body,
+      silent: false, // Явно требуем звук
+      icon: path.join(__dirname, 'icon.ico') // Добавляем иконку в само уведомление
+    });
+    
     notification.show();
+    
+    // Дополнительно: если кликнуть по уведомлению, разворачиваем окно
+    notification.on('click', () => {
+      if (win) {
+        if (win.isMinimized()) win.restore();
+        if (!win.isVisible()) win.show();
+        win.focus();
+      }
+    });
   });
+  // =============================================================
 
 
   /* --- Секция логики обновлений --- */
