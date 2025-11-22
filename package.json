@@ -1,6 +1,6 @@
 {
   "name": "bukhgalterskiy-kalendar",
-  "version": "1.4.2",
+  "version": "1.4.3",
   "description": "Приложение-ассистент для бухгалтеров на аутсорсе.",
   "main": "electron.cjs",
   "author": "AI Assistant",
@@ -44,7 +44,7 @@
       "electron.cjs",
       "preload.js",
       "package.json",
-      "icon.ico" 
+      "icon.ico"
     ],
     "directories": {
       "output": "release"
