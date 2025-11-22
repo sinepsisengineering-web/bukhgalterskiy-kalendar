@@ -1,6 +1,6 @@
 {
   "name": "bukhgalterskiy-kalendar",
-  "version": "1.4.3",
+  "version": "1.4.4",
   "description": "Приложение-ассистент для бухгалтеров на аутсорсе.",
   "main": "electron.cjs",
   "author": "AI Assistant",
