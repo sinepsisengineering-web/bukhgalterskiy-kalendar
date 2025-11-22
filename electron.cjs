@@ -4,35 +4,30 @@ const path = require('path');
 const { autoUpdater } = require('electron-updater');
 const log = require('electron-log');
 
+// === ВАЖНОЕ ИЗМЕНЕНИЕ 1: Разрешаем звук без взаимодействия пользователя (для автозапуска) ===
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
+// =========================================================================================
+
 const isDev = !app.isPackaged;
 let win;
 let tray = null;
 
-// === ПРОВЕРКА НА ЕДИНСТВЕННЫЙ ЭКЗЕМПЛЯР ===
 const gotTheLock = app.requestSingleInstanceLock();
 
 if (!gotTheLock) {
-  // Если блокировку получить не удалось, значит приложение уже запущено.
-  // Просто выходим.
   app.quit();
 } else {
-  // Если мы здесь — это ГЛАВНЫЙ и ЕДИНСТВЕННЫЙ процесс.
-  // Начинаем выполнение кода...
-
-  /* --- Секция настройки логирования --- */
+  
   log.transports.file.resolvePath = () => path.join(app.getPath('userData'), 'logs/main.log');
   log.transports.file.level = "info";
   autoUpdater.logger = log;
   log.info('Приложение запускается...');
 
-  // Слушаем попытку запуска второй копии
   app.on('second-instance', (event, commandLine, workingDirectory) => {
-    // Кто-то пытался запустить вторую копию (например, кликнул ярлык).
-    // Мы должны развернуть наше окно.
     if (win) {
-      if (win.isMinimized()) win.restore(); // Если свернуто - развернуть
-      if (!win.isVisible()) win.show();     // Если спрятано в трей - показать
-      win.focus();                          // Перевести фокус на окно
+      if (win.isMinimized()) win.restore();
+      if (!win.isVisible()) win.show();
+      win.focus();
     }
   });
 
@@ -86,7 +81,11 @@ if (!gotTheLock) {
       show: false,
       icon: path.join(__dirname, 'icon.ico'),
       webPreferences: {
-        preload: path.join(__dirname, 'preload.js')
+        preload: path.join(__dirname, 'preload.js'),
+        
+        // === ВАЖНОЕ ИЗМЕНЕНИЕ 2: Отключаем заморозку таймеров в фоне ===
+        backgroundThrottling: false 
+        // =============================================================
       }
     });
 
@@ -105,7 +104,6 @@ if (!gotTheLock) {
     } else {
       win.loadFile(path.join(__dirname, 'dist', 'index.html'));
       
-      // Если НЕ скрытый запуск, то показываем окно
       if (!startHidden) {
         win.show();
       }
@@ -217,4 +215,4 @@ if (!gotTheLock) {
   });
 
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
-} // Закрывающая скобка блока else (gotTheLock)
+}
