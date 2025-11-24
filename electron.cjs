@@ -33,6 +33,11 @@ if (!gotTheLock) {
   log.transports.file.resolvePath = () => path.join(app.getPath('userData'), 'logs/main.log');
   log.transports.file.level = "info";
   autoUpdater.logger = log;
+
+  // <<< ВАЖНОЕ ИСПРАВЛЕНИЕ ДЛЯ ОБНОВЛЕНИЙ >>>
+  // Разрешаем обновление с самоподписанным сертификатом (без покупки дорогого Code Signing Certificate)
+  autoUpdater.verifyUpdateCodeSignature = false;
+
   log.info('Приложение запускается...');
 
   // Обработка повторного запуска (клик по ярлыку, когда приложение уже работает)
