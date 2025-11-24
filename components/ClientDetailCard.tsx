@@ -1,7 +1,7 @@
 // src/components/ClientDetailCard.tsx
 
 import React, { useState, useMemo } from 'react';
-import { LegalEntity, Task, Patent, Credential, Note, TaskStatus } from '../types';
+import { LegalEntity, Task, Patent, Credential, Note } from '../types';
 import { ReusableTaskList } from './ReusableTaskList';
 import { FilterModal, FilterState } from './FilterModal';
 import { isTaskLocked } from '../services/taskGenerator';
@@ -22,9 +22,7 @@ interface ClientDetailCardProps {
   onBulkDelete: (taskIds: string[]) => void;
   onDeleteTask: (taskId: string) => void;
   onAddNote: (legalEntityId: string, noteText: string) => void;
-  // <<< НОВОЕ СВОЙСТВО ДЛЯ РЕДАКТИРОВАНИЯ ЗАМЕТКИ >>>
   onEditNote: (legalEntityId: string, noteId: string, newText: string) => void;
-  // <<< НОВОЕ СВОЙСТВО ДЛЯ УДАЛЕНИЯ ЗАМЕТКИ >>>
   onDeleteNote: (legalEntityId: string, noteId: string) => void;
 }
 
@@ -70,8 +68,8 @@ const AddNoteForm: React.FC<{ onAdd: (text: string) => void }> = ({ onAdd }) => 
 export const ClientDetailCard: React.FC<ClientDetailCardProps> = ({ 
   legalEntity, tasks, onClose, onEdit, onArchive, onDelete, onAddTask,
   onOpenTaskDetail, onBulkComplete, onBulkDelete, onDeleteTask, onAddNote,
-  onEditNote, // <<< ПОЛУЧАЕМ НОВЫЙ ПРОПС
-  onDeleteNote // <<< ПОЛУЧАЕМ НОВЫЙ ПРОПС
+  onEditNote,
+  onDeleteNote
 }) => {
   const confirm = useConfirmation();
 
@@ -81,10 +79,12 @@ export const ClientDetailCard: React.FC<ClientDetailCardProps> = ({
     searchText: '', selectedClients: [], selectedYear: 'all', selectedStatuses: [],
   });
 
-  // <<< НАЧАЛО НОВЫХ СОСТОЯНИЙ ДЛЯ РЕДАКТИРОВАНИЯ ЗАМЕТОК >>>
+  // Состояния для редактирования заметок
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [editingNoteText, setEditingNoteText] = useState('');
-  // <<< КОНЕЦ НОВЫХ СОСТОЯНИЙ >>>
+
+  // === НОВОЕ СОСТОЯНИЕ: Видимость паролей ===
+  const [visiblePasswords, setVisiblePasswords] = useState<Record<string, boolean>>({});
 
   const availableYears = useMemo(() => 
     Array.from(new Set(tasks.map(task => new Date(task.dueDate).getFullYear()))).sort((a, b) => a - b), 
@@ -150,7 +150,7 @@ export const ClientDetailCard: React.FC<ClientDetailCardProps> = ({
     }
   };
 
-  // <<< НАЧАЛО НОВЫХ ОБРАБОТЧИКОВ ДЛЯ ЗАМЕТОК >>>
+  // Обработчики заметок
   const handleStartEdit = (note: Note) => {
     setEditingNoteId(note.id);
     setEditingNoteText(note.text);
@@ -164,7 +164,7 @@ export const ClientDetailCard: React.FC<ClientDetailCardProps> = ({
   const handleSaveNote = () => {
     if (!editingNoteId || !editingNoteText.trim()) return;
     onEditNote(legalEntity.id, editingNoteId, editingNoteText.trim());
-    handleCancelEdit(); // Сбрасываем состояние редактирования после сохранения
+    handleCancelEdit();
   };
   
   const handleDeleteNote = async (noteId: string) => {
@@ -178,7 +178,11 @@ export const ClientDetailCard: React.FC<ClientDetailCardProps> = ({
       onDeleteNote(legalEntity.id, noteId);
     }
   };
-  // <<< КОНЕЦ НОВЫХ ОБРАБОТЧИКОВ >>>
+
+  // === НОВЫЙ ОБРАБОТЧИК: Переключение видимости пароля ===
+  const togglePasswordVisibility = (credId: string) => {
+    setVisiblePasswords(prev => ({ ...prev, [credId]: !prev[credId] }));
+  };
 
   const renderTabContent = () => {
     switch (activeTab) {
@@ -235,9 +239,52 @@ export const ClientDetailCard: React.FC<ClientDetailCardProps> = ({
         );
       }
       case 'patents': return ( <div className="mt-4 space-y-3"> {legalEntity.patents?.length ? legalEntity.patents.map((patent: Patent, index) => ( <div key={index} className="p-4 border rounded-lg bg-slate-50"> <p className="font-semibold">{patent.name}</p> <p className="text-sm text-slate-600">Срок действия: {new Date(patent.startDate).toLocaleDateString()} - {new Date(patent.endDate).toLocaleDateString()}</p> </div> )) : <p className="text-slate-500 text-center py-8">Патенты не добавлены.</p>} </div> );
-      case 'credentials': return ( <div className="mt-4 space-y-3"> {legalEntity.credentials?.length ? legalEntity.credentials.map((cred: Credential, index) => ( <div key={index} className="p-4 border rounded-lg bg-slate-50"> <p className="font-semibold">{cred.service}</p> <p className="text-sm text-slate-600">Логин: {cred.login}</p> </div> )) : <p className="text-slate-500 text-center py-8">Учетные данные не добавлены.</p>} </div> );
       
-      // <<< НАЧАЛО ОБНОВЛЕННОГО БЛОКА ДЛЯ ЗАМЕТОК >>>
+      // === ОБНОВЛЕННЫЙ БЛОК CREDENTIALS ===
+      case 'credentials': 
+        return ( 
+          <div className="mt-4 space-y-3"> 
+            {legalEntity.credentials?.length ? legalEntity.credentials.map((cred: Credential, index) => {
+               // Используем cred.id если есть, или index как фоллбэк
+               const key = cred.id || index.toString(); 
+               return (
+                <div key={key} className="p-4 border rounded-lg bg-slate-50">
+                    <div className="flex justify-between items-start">
+                        <div className="w-full">
+                            <p className="font-semibold text-lg text-slate-800 mb-2">{cred.service}</p>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="bg-white p-2 rounded border border-slate-200">
+                                    <span className="text-xs text-slate-400 uppercase font-bold block mb-1">Логин</span>
+                                    <span className="text-slate-800 select-all">{cred.login}</span>
+                                </div>
+                                <div className="bg-white p-2 rounded border border-slate-200 flex justify-between items-center">
+                                    <div>
+                                        <span className="text-xs text-slate-400 uppercase font-bold block mb-1">Пароль</span>
+                                        <span className="text-slate-800 font-mono select-all">
+                                            {visiblePasswords[key] ? cred.password : '••••••••'}
+                                        </span>
+                                    </div>
+                                    <button 
+                                        onClick={() => togglePasswordVisibility(key)}
+                                        className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-slate-50 rounded-full transition-all"
+                                        title={visiblePasswords[key] ? "Скрыть пароль" : "Показать пароль"}
+                                    >
+                                        {visiblePasswords[key] ? (
+                                            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>
+                                        ) : (
+                                            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                                        )}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+               );
+            }) : <p className="text-slate-500 text-center py-8">Учетные данные не добавлены.</p>} 
+          </div> 
+        );
+      
       case 'notes': 
         return ( 
           <div className="mt-4 flex flex-col h-full"> 
@@ -246,7 +293,6 @@ export const ClientDetailCard: React.FC<ClientDetailCardProps> = ({
                 [...legalEntity.notes].reverse().map((note: Note) => ( 
                   <div key={note.id} className="p-4 border rounded-lg bg-slate-50">
                     {editingNoteId === note.id ? (
-                      // РЕЖИМ РЕДАКТИРОВАНИЯ
                       <div>
                         <textarea
                           value={editingNoteText}
@@ -270,7 +316,6 @@ export const ClientDetailCard: React.FC<ClientDetailCardProps> = ({
                         </div>
                       </div>
                     ) : (
-                      // РЕЖИМ ОТОБРАЖЕНИЯ
                       <div className="flex justify-between items-start group">
                         <div>
                           <p className="text-sm text-slate-500 mb-2"> 
@@ -308,7 +353,6 @@ export const ClientDetailCard: React.FC<ClientDetailCardProps> = ({
             </div> 
           </div> 
         );
-      // <<< КОНЕЦ ОБНОВЛЕННОГО БЛОКА >>>
       
       default: return null;
     }
