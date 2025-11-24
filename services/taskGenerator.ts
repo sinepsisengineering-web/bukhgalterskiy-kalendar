@@ -73,10 +73,17 @@ export const generateTasksForLegalEntity = (legalEntity: LegalEntity): Task[] =>
                 else if (rule.periodicity === RepeatFrequency.Quarterly) { periodEndDate = new Date(year, i * 3 + 3, 0); } 
                 else { periodEndDate = new Date(year, 11, 31); }
                 
+                // Пропускаем периоды, которые закончились до создания клиента
                 if (periodEndDate < startDate) { continue; }
 
                 const rawDueDate = calculateDueDate(year, periodIndex, rule);
                 const dueDate = adjustDate(rawDueDate, rule.dueDateRule);
+                
+                // <<< ВАЖНОЕ ИСПРАВЛЕНИЕ: ДОПОЛНИТЕЛЬНАЯ ЗАЩИТА ОТ ПРОШЛЫХ ЗАДАЧ >>>
+                // Если срок выполнения задачи раньше, чем дата создания клиента — не создаем её.
+                // Это решает проблему появления задач за март при создании клиента в ноябре.
+                if (dueDate < startDate) { continue; }
+
                 const title = formatTaskTitle(rule.titleTemplate, year, periodIndex, rule.periodicity);
 
                 const task: Task = { 
@@ -111,6 +118,7 @@ export const generateTasksForLegalEntity = (legalEntity: LegalEntity): Task[] =>
                 const currentYearEndDate = new Date(originalEndDate);
                 currentYearEndDate.setFullYear(originalEndDate.getFullYear() + yearOffset);
                 if (currentYearEndDate < startDate) { return; }
+                
                 const durationMonths = (currentYearEndDate.getFullYear() - currentYearStartDate.getFullYear()) * 12 + (currentYearEndDate.getMonth() - currentYearStartDate.getMonth()) + 1;
                 const seriesId = `series-patent-${patent.id}-${year}`;
                 const createPatentTask = (idSuffix: string, title: string, date: Date, rule: TaskDueDateRule, locked: boolean = true) => ({ 
@@ -127,18 +135,25 @@ export const generateTasksForLegalEntity = (legalEntity: LegalEntity): Task[] =>
                   isPeriodLocked: locked 
                 });
                 
-                if (durationMonths <= 6) { allTasks.push(createPatentTask('payment-full', 'Оплата патента', currentYearEndDate, TaskDueDateRule.PreviousBusinessDay)); } 
+                // Для патентов также добавляем проверку: не создавать просроченные при создании
+                const safePush = (task: Task) => {
+                    if (task.dueDate >= startDate) {
+                        allTasks.push(task);
+                    }
+                };
+                
+                if (durationMonths <= 6) { safePush(createPatentTask('payment-full', 'Оплата патента', currentYearEndDate, TaskDueDateRule.PreviousBusinessDay)); } 
                 else if (durationMonths > 6 && durationMonths <= 12) {
                     const firstPaymentDate = new Date(currentYearStartDate);
                     firstPaymentDate.setDate(firstPaymentDate.getDate() + 90);
-                    allTasks.push(createPatentTask('payment-1-of-2', 'Оплата 1/3 патента', firstPaymentDate, TaskDueDateRule.NextBusinessDay));
-                    allTasks.push(createPatentTask('payment-2-of-2', 'Оплата 2/3 патента', currentYearEndDate, TaskDueDateRule.PreviousBusinessDay));
+                    safePush(createPatentTask('payment-1-of-2', 'Оплата 1/3 патента', firstPaymentDate, TaskDueDateRule.NextBusinessDay));
+                    safePush(createPatentTask('payment-2-of-2', 'Оплата 2/3 патента', currentYearEndDate, TaskDueDateRule.PreviousBusinessDay));
                 }
                 if (patent.autoRenew) {
                     const renewalDate = new Date(currentYearEndDate);
                     renewalDate.setMonth(renewalDate.getMonth() - 1);
                     if (renewalDate >= startDate) { 
-                      allTasks.push(createPatentTask('renewal', `Продление патента`, renewalDate, TaskDueDateRule.PreviousBusinessDay, false)); 
+                      safePush(createPatentTask('renewal', `Продление патента`, renewalDate, TaskDueDateRule.PreviousBusinessDay, false)); 
                     }
                 }
             });
@@ -148,7 +163,7 @@ export const generateTasksForLegalEntity = (legalEntity: LegalEntity): Task[] =>
 };
 
 // ==========================================
-// 3. ИСПРАВЛЕННАЯ ЛОГИКА БЛОКИРОВКИ
+// 3. ЛОГИКА БЛОКИРОВКИ
 // ==========================================
 
 export const getTaskStatus = (dueDate: Date): TaskStatus => {
@@ -167,14 +182,12 @@ export const getTaskStatus = (dueDate: Date): TaskStatus => {
 const getPeriodStartDateForTask = (task: Task): Date | null => {
   if (!task.isAutomatic) return null;
 
-  // 1. Патенты
   if (task.id.startsWith('patent-')) {
       const parts = task.id.split('-');
       const year = parseInt(parts[parts.length - 1], 10);
       return !isNaN(year) ? new Date(year, 0, 1) : null;
   }
 
-  // 2. Стандартные правила
   const regex = /auto-.*-([A-Za-z0-9_]+)-(\d{4})-(\d+)$/;
   const match = task.id.match(regex);
 
@@ -191,40 +204,29 @@ const getPeriodStartDateForTask = (task: Task): Date | null => {
 
   switch (rule.periodicity) {
     case RepeatFrequency.Monthly:
-      // Ежемесячные задачи.
-      // Если есть monthOffset (сдается в след. месяце), сдвигаем дату открытия.
       const offset = rule.dateConfig.monthOffset || 0;
       periodStartDate = new Date(year, periodIndex + offset, 1);
       
-      // Специфика для второй части месяца (если нет сдвига месяца)
       if (rule.id.includes('_2') && offset === 0) { 
           periodStartDate.setDate(23); 
       }
       break;
 
     case RepeatFrequency.Quarterly:
-      // Открываем 1-го числа месяца, следующего за кварталом
       periodStartDate = new Date(year, (periodIndex + 1) * 3, 1);
       break;
 
     case RepeatFrequency.Yearly:
-      // --- ИСПРАВЛЕНИЕ ДЛЯ НДФЛ ЗА ДЕКАБРЬ ---
-      // Если это особое правило "последний рабочий день" или явно декабрьский НДФЛ,
-      // то период начинается 23 декабря отчетного года.
       if (rule.dateConfig.specialRule === 'LAST_WORKING_DAY_OF_YEAR' || rule.id.includes('DECEMBER')) {
           periodStartDate = new Date(year, 11, 23);
           break;
       }
 
-      // Обычная логика для остальных годовых
-      const dueMonth = rule.dateConfig.month || 0;
-      if (dueMonth < 6) {
-           // Декларация за год (сдается в начале след. года) -> Блок до 1 янв след. года
-           periodStartDate = new Date(year + 1, 0, 1);
-      } else {
-           // Платеж внутри года -> Открыт с начала года
-           periodStartDate = new Date(year, 0, 1);
-      }
+      // <<< ИСПРАВЛЕНИЕ СТАТУСА ДЛЯ ГОДОВЫХ ЗАДАЧ >>>
+      // Для годовых задач (сдача деклараций), ID задачи содержит год срока выполнения.
+      // Соответственно, период начинается 1 января ЭТОГО ЖЕ года (а не следующего).
+      // Пример: Декларация УСН 2024. Срок: Март 2025. ID: 2025. Начало периода: 1 Января 2025.
+      periodStartDate = new Date(year, 0, 1);
       break;
 
     default:
