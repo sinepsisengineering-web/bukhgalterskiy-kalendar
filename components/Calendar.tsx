@@ -110,9 +110,22 @@ const WeekView: React.FC<{ tasks: Task[]; legalEntities: LegalEntity[]; currentD
                             </div>
                             <div className="p-1 sm:p-2 space-y-1 sm:space-y-2 flex-1 min-h-[120px] overflow-y-auto">
                                 {tasksForDay.map(task => {
-                                    const statusStyle = TASK_STATUS_STYLES[task.status] || TASK_STATUS_STYLES[TaskStatus.Locked];
+                                    const isLocked = task.status === TaskStatus.Locked;
+                                    const statusStyle = isLocked ? TASK_STATUS_STYLES[TaskStatus.Locked] : TASK_STATUS_STYLES[task.status];
+                                    
                                     return (
-                                        <div key={task.id} onClick={() => onOpenDetail([task], new Date(task.dueDate))} className={`text-xs p-1 rounded cursor-pointer truncate ${task.status === TaskStatus.Completed ? 'bg-green-100 text-green-700 line-through' : `${statusStyle.bg} ${statusStyle.text}`}`} title={`${task.title}`}>
+                                        <div 
+                                            key={task.id} 
+                                            onClick={() => {
+                                                if (isLocked) return;
+                                                onOpenDetail([task], new Date(task.dueDate))
+                                            }} 
+                                            className={`text-xs p-1 rounded truncate transition-colors
+                                                ${task.status === TaskStatus.Completed ? 'bg-green-100 text-green-700 line-through' : `${statusStyle.bg} ${statusStyle.text}`}
+                                                ${isLocked ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}
+                                            `} 
+                                            title={`${task.title}`}
+                                        >
                                             {task.title}
                                         </div>
                                     )
@@ -181,19 +194,28 @@ const MonthView: React.FC<{ tasks: Task[]; legalEntities: LegalEntity[]; current
                                     : uncompletedTasks.find(t => t.status === TaskStatus.Overdue)?.status ||
                                       uncompletedTasks.find(t => t.status === TaskStatus.DueToday)?.status ||
                                       uncompletedTasks.find(t => t.status === TaskStatus.DueSoon)?.status ||
+                                      uncompletedTasks.find(t => t.status === TaskStatus.Locked)?.status ||
                                       TaskStatus.Upcoming;
                                 
-                                const statusStyle = TASK_STATUS_STYLES[overallStatus] || TASK_STATUS_STYLES[TaskStatus.Locked];
+                                const isLocked = overallStatus === TaskStatus.Locked;
+                                const statusStyle = TASK_STATUS_STYLES[overallStatus] || TASK_STATUS_STYLES[TaskStatus.Upcoming];
                                 
                                 return (
                                 <div 
                                     key={mainTask.seriesId || mainTask.id} 
-                                    onClick={(e) => {e.stopPropagation(); onOpenDetail(group, new Date(mainTask.dueDate));}} 
-                                    className={`text-xs px-1.5 py-0.5 rounded truncate relative flex items-center justify-between gap-1 ${isAllCompleted ? 'bg-green-100 text-green-700 line-through' : `${statusStyle.bg} ${statusStyle.text}`}`} 
+                                    onClick={(e) => {
+                                        e.stopPropagation(); 
+                                        if (isLocked) return;
+                                        onOpenDetail(group, new Date(mainTask.dueDate));
+                                    }} 
+                                    className={`text-xs px-1.5 py-0.5 rounded truncate relative flex items-center justify-between gap-1 
+                                        ${isAllCompleted ? 'bg-green-100 text-green-700 line-through' : `${statusStyle.bg} ${statusStyle.text}`}
+                                        ${isLocked ? 'cursor-not-allowed opacity-70' : ''}
+                                    `} 
                                     title={`${mainTask.title} (${isAllCompleted ? 'Выполнено' : `Невыполнено: ${uncompletedCount}`})`}>
                                         <span className="truncate flex-1">{mainTask.title}</span>
                                         {group.length > 1 && (
-                                            <span className={`flex-shrink-0 text-white text-[10px] font-bold w-4 h-4 flex items-center justify-center rounded-full ${isAllCompleted ? 'bg-green-500' : statusStyle.bg.replace('-100', '-500')}`}>
+                                            <span className={`flex-shrink-0 text-white text-[10px] font-bold w-4 h-4 flex items-center justify-center rounded-full ${isAllCompleted ? 'bg-green-500' : isLocked ? 'bg-gray-400' : statusStyle.bg.replace('-100', '-500')}`}>
                                                 {isAllCompleted 
                                                     ? (<svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>)
                                                     : uncompletedCount
@@ -242,7 +264,7 @@ const MiniMonthGrid: React.FC<{ year: number; month: number; tasks: Task[]; onSe
                             <span className={`text-xs ${!isCurrentMonth ? 'text-slate-300' : d.getTime() === today.getTime() ? 'text-indigo-600 font-bold' : (isWknd || isHol) ? 'text-red-600' : 'text-slate-600'}`}>{d.getDate()}</span>
                             <div className="flex justify-center items-center h-2 space-x-px mt-px">
                                 {isCurrentMonth && statuses.slice(0, 4).map((status: TaskStatus) => {
-                                    const statusStyle = TASK_STATUS_STYLES[status] || TASK_STATUS_STYLES[TaskStatus.Locked];
+                                    const statusStyle = TASK_STATUS_STYLES[status] || TASK_STATUS_STYLES[TaskStatus.Upcoming];
                                     return <div key={status} className={`w-1.5 h-1.5 rounded-full opacity-75 ${statusStyle.bg.replace('-100', '-500')}`} />
                                 })}
                             </div>

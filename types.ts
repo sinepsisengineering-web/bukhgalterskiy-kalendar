@@ -44,6 +44,7 @@ export interface LegalEntity {
   kpp?: string;
   ogrn: string;
   ogrnDate?: Date;
+  createdAt?: Date | string; 
   legalAddress: string;
   actualAddress: string;
   contactPerson: string;

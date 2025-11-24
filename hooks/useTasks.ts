@@ -35,9 +35,13 @@ export const useTasks = (legalEntities: LegalEntity[], legalEntityMap: Map<strin
     localStorage.setItem('tasks', JSON.stringify(tasks));
   }, [tasks]);
 
+  // <<< ВОЗВРАЩАЕМ ЭТОТ useEffect К ЕГО ПРОСТОЙ И ОРИГИНАЛЬНОЙ ВЕРСИИ >>>
   useEffect(() => {
     if (legalEntities.length === 0) return;
+    
+    // Генератор теперь сам знает, как правильно обработать каждого клиента, используя его `createdAt`
     const expectedAutoTasks = legalEntities.flatMap(le => generateTasksForLegalEntity(le));
+    
     setTasks(currentTasks => {
       const manualTasks = currentTasks.filter(t => !t.isAutomatic);
       const existingAutoTasksMap = new Map<string, Task>();
@@ -49,6 +53,7 @@ export const useTasks = (legalEntities: LegalEntity[], legalEntityMap: Map<strin
       const updatedAutoTasks = expectedAutoTasks.map((expectedTask: Task) => {
         const existingTask = existingAutoTasksMap.get(expectedTask.id);
         if (existingTask) {
+          // Сохраняем статус, особенно 'Completed'
           return { ...expectedTask, status: existingTask.status };
         }
         return expectedTask;
@@ -56,7 +61,7 @@ export const useTasks = (legalEntities: LegalEntity[], legalEntityMap: Map<strin
       const allTasks = [...manualTasks, ...updatedAutoTasks];
       return updateTaskStatuses(allTasks);
     });
-  }, [legalEntities]);
+  }, [legalEntities]); // Зависимость от legalEntities остается, это правильно
 
   useEffect(() => {
     if (tasks.length > 0 && legalEntityMap.size > 0 && !notificationCheckRef.current) {

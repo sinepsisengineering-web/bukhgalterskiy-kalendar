@@ -29,6 +29,8 @@ const parseLegalEntity = (le: any): LegalEntity => {
     return {
         ...le,
         ogrnDate: le.ogrnDate ? new Date(le.ogrnDate) : undefined,
+        // <<< ДОБАВЛЕНА ОБРАБОТКА createdAt ПРИ ЗАГРУЗКЕ >>>
+        createdAt: le.createdAt ? new Date(le.createdAt) : undefined,
         patents: le.patents ? le.patents.map((p: any) => ({ ...p, startDate: new Date(p.startDate), endDate: new Date(p.endDate) })) : [],
         notes: migratedNotes,
     };
@@ -71,11 +73,13 @@ const App: React.FC = () => {
     
     const legalEntityMap = useMemo(() => new Map(legalEntities.map(le => [le.id, le])), [legalEntities]);
 
+    // <<< УДАЛЕНА ЛИШНЯЯ ФУНКЦИЯ addTasksForNewLegalEntity ИЗ ДЕСТРУКТУРИЗАЦИИ >>>
     const {
         tasks, isTaskModalOpen, setIsTaskModalOpen, taskToEdit, setTaskToEdit, taskModalDefaultDate,
         isTaskDetailModalOpen, setIsTaskDetailModalOpen, tasksForDetailView, setTasksForDetailView,
         handleSaveTask, handleOpenNewTaskForm,
-        handleOpenTaskDetail, handleToggleComplete, handleEditTaskFromDetail, handleDeleteTask, handleBulkComplete, handleBulkDelete, handleDeleteTasksForLegalEntity,
+        handleOpenTaskDetail, handleToggleComplete, handleEditTaskFromDetail, handleDeleteTask, 
+        handleBulkComplete, handleBulkDelete, handleDeleteTasksForLegalEntity,
     } = useTasks(activeLegalEntities, legalEntityMap);
 
     useEffect(() => {
@@ -90,11 +94,24 @@ const App: React.FC = () => {
     
     const handleSaveLegalEntity = (entityData: LegalEntity) => {
         const entityExists = entityData.id && legalEntities.some(le => le.id === entityData.id);
-        const updatedEntities = entityExists
-            ? legalEntities.map(le => (le.id === entityData.id ? entityData : le))
-            : [...legalEntities, { ...entityData, id: `le-${Date.now()}-${Math.random()}` }];
-        setLegalEntities(updatedEntities);
-        if (selectedLegalEntity && selectedLegalEntity.id === entityData.id) setSelectedLegalEntity(entityData);
+        
+        if (entityExists) {
+            // Логика обновления существующего клиента
+            const updatedEntities = legalEntities.map(le => (le.id === entityData.id ? entityData : le));
+            setLegalEntities(updatedEntities);
+            if (selectedLegalEntity && selectedLegalEntity.id === entityData.id) {
+                setSelectedLegalEntity(entityData);
+            }
+        } else {
+            // <<< ДОБАВЛЕНА ЗАПИСЬ createdAt ПРИ СОЗДАНИИ НОВОГО КЛИЕНТА >>>
+            const newLegalEntity = { 
+                ...entityData, 
+                id: `le-${Date.now()}-${Math.random()}`,
+                createdAt: new Date()
+            };
+            setLegalEntities(prev => [...prev, newLegalEntity]);
+        }
+
         setIsLegalEntityModalOpen(false);
         setLegalEntityToEdit(null);
     };
@@ -120,7 +137,6 @@ const App: React.FC = () => {
         }
     };
 
-    // <<< НАЧАЛО НОВЫХ ФУНКЦИЙ >>>
     const handleEditNote = (legalEntityId: string, noteId: string, newText: string) => {
         let updatedSelectedEntity: LegalEntity | undefined;
         
@@ -164,7 +180,6 @@ const App: React.FC = () => {
             setSelectedLegalEntity(updatedSelectedEntity);
         }
     };
-    // <<< КОНЕЦ НОВЫХ ФУНКЦИЙ >>>
 
     const handleArchiveLegalEntity = (entity: LegalEntity) => {
         setLegalEntities(prev => prev.map(le => (le.id === entity.id ? { ...le, isArchived: true } : le)));
@@ -198,7 +213,6 @@ const App: React.FC = () => {
     const renderContent = () => {
         if (selectedLegalEntity && activeView === 'clients') {
             const entityTasks = tasks.filter(task => task.legalEntityId === selectedLegalEntity.id);
-            // <<< НАЧАЛО ОБНОВЛЕНИЯ PROPS >>>
             return <ClientDetailCard 
                 legalEntity={selectedLegalEntity} 
                 tasks={entityTasks} 
@@ -215,7 +229,6 @@ const App: React.FC = () => {
                 onEditNote={handleEditNote}
                 onDeleteNote={handleDeleteNote}
             />;
-            // <<< КОНЕЦ ОБНОВЛЕНИЯ PROPS >>>
         }
         switch (activeView) {
             case 'calendar': return <Calendar tasks={tasks} legalEntities={activeLegalEntities} onUpdateTaskStatus={() => {}} onAddTask={(date) => handleOpenNewTaskForm({ dueDate: date })} onOpenDetail={handleOpenTaskDetail} onDeleteTask={handleDeleteTask} />;

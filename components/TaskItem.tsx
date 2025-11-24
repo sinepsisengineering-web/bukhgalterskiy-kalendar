@@ -3,7 +3,6 @@
 import React from 'react';
 import { Task, TaskStatus } from '../types';
 import { TASK_STATUS_STYLES } from '../constants';
-import { isTaskLocked } from '../services/taskGenerator';
 import { useConfirmation } from '../contexts/ConfirmationProvider';
 
 interface TaskItemProps {
@@ -22,12 +21,17 @@ export const TaskItem: React.FC<TaskItemProps> = ({ task, clientName, isSelected
     return null;
   }
 
-  const locked = isTaskLocked(task);
-  const statusStyle = TASK_STATUS_STYLES[task.status];
+  // <<< ОПРЕДЕЛЯЕМ СОСТОЯНИЕ БЛОКИРОВКИ НА ОСНОВЕ СТАТУСА >>>
+  const isLocked = task.status === TaskStatus.Locked;
+  const isCompleted = task.status === TaskStatus.Completed;
+
+  // <<< ВЫБИРАЕМ ПРАВИЛЬНЫЙ СТИЛЬ: Если задача заблокирована, используем стиль для Locked, иначе - ее текущий стиль >>>
+  const finalStatusStyle = isLocked ? TASK_STATUS_STYLES[TaskStatus.Locked] : TASK_STATUS_STYLES[task.status];
 
   const handleSelectToggle = (e: React.ChangeEvent<HTMLInputElement>) => {
     e.stopPropagation();
-    if (locked) return;
+    // Двойная проверка: и на isLocked, и на isCompleted
+    if (isLocked || isCompleted) return;
     onTaskSelect(task.id, e.target.checked);
   };
 
@@ -35,39 +39,50 @@ export const TaskItem: React.FC<TaskItemProps> = ({ task, clientName, isSelected
     e.stopPropagation();
     
     const isConfirmed = await confirm({
-  title: 'Подтверждение удаления',
-  message: (
-    <>
-      <p>Вы уверены, что хотите удалить задачу?</p>
-      <p className="text-sm text-slate-500 mt-2">Связанный клиент: ...</p>
-    </>
-  ),
-  confirmButtonText: 'Удалить',
-  confirmButtonClass: 'bg-red-600 hover:bg-red-700'    });
+      title: 'Подтверждение удаления',
+      message: `Вы уверены, что хотите удалить задачу "${task.title}"?`,
+      confirmButtonText: 'Удалить',
+      confirmButtonClass: 'bg-red-600 hover:bg-red-700'
+    });
 
     if (isConfirmed) {
       onDeleteTask(task.id);
     }
   };
   
-  const isCompleted = task.status === TaskStatus.Completed;
+  const handleOpenDetailClick = () => {
+    // <<< ЗАПРЕЩАЕМ ОТКРЫВАТЬ ДЕТАЛИ ДЛЯ ЗАБЛОКИРОВАННЫХ ЗАДАЧ >>>
+    if (isLocked) return;
+    onOpenDetail(task);
+  }
 
   return (
     <div
-      onClick={() => onOpenDetail(task)}
-      className={`p-3 flex items-center gap-4 border-l-4 rounded cursor-pointer transition-shadow hover:shadow-md ${statusStyle.bg} ${statusStyle.border}`}
+      onClick={handleOpenDetailClick}
+      // <<< ДОБАВЛЯЕМ КЛАССЫ ДЛЯ БЛОКИРОВКИ >>>
+      className={`
+        p-3 flex items-center gap-4 border-l-4 rounded transition-shadow 
+        ${finalStatusStyle.bg} ${finalStatusStyle.border}
+        ${isLocked ? 'cursor-not-allowed opacity-70' : 'cursor-pointer hover:shadow-md'}
+      `}
     >
       <input
         type="checkbox"
         checked={isSelected}
         onChange={handleSelectToggle}
         onClick={(e) => e.stopPropagation()}
-        disabled={locked}
+        // <<< УПРАВЛЯЕМ disabled НА ОСНОВЕ isLocked И isCompleted >>>
+        disabled={isLocked || isCompleted}
         className="h-5 w-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
       />
       
       <div className="flex-1 min-w-0">
-        <p className={`font-semibold truncate ${statusStyle.text} ${isCompleted ? 'line-through text-slate-500' : ''}`}>
+        {/* <<< ДОБАВЛЯЕМ СТИЛИ ДЛЯ ТЕКСТА ЗАБЛОКИРОВАННОЙ ЗАДАЧИ >>> */}
+        <p className={`
+          font-semibold truncate 
+          ${isLocked ? 'text-slate-500' : finalStatusStyle.text}
+          ${isCompleted ? 'line-through text-slate-500' : ''}
+        `}>
           {task.title}
         </p>
         <p className="text-sm text-slate-500 truncate">{clientName}</p>
@@ -75,9 +90,8 @@ export const TaskItem: React.FC<TaskItemProps> = ({ task, clientName, isSelected
       
       <div className="flex items-center gap-3 flex-shrink-0">
         <div className="hidden sm:flex flex-col items-end text-right">
-          <p className={`text-sm font-medium ${statusStyle.text}`}>{task.status}</p>
+          <p className={`text-sm font-medium ${isLocked ? 'text-slate-500' : finalStatusStyle.text}`}>{task.status}</p>
           <p className="text-sm text-slate-600">
-            {/* ====== ВОТ ИСПРАВЛЕННАЯ СТРОКА ====== */}
             {new Date(task.dueDate).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' })}
           </p>
         </div>
