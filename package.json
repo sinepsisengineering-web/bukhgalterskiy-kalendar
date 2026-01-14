@@ -51,7 +51,9 @@
     },
     "win": {
       "target": "nsis",
-      "icon": "icon.ico"
+      "icon": "icon.ico",
+      "signingHashAlgorithms": null,
+      "sign": null
     },
     "mac": {
       "target": "dmg",
