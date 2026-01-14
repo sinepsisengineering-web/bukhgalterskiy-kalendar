@@ -26,3 +26,6 @@ dist-ssr
 /release
 /dist
 /node_modules
+
+# Development docs (not for release)
+.agent/
