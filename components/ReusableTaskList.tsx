@@ -12,28 +12,30 @@ const toLocalDateString = (date: Date): string => {
 };
 
 export interface ReusableTaskListProps {
-  tasks: Task[];
-  legalEntityMap: Map<string, LegalEntity>;
-  selectedTaskIds: Set<string>;
-  selectableTaskIds: Set<string>;
-  onTaskSelect: (taskId: string, isSelected: boolean) => void;
-  onOpenDetail: (tasks: Task[], date: Date) => void;
-  onDeleteTask: (taskId:string) => void;
-  headerComponent?: React.ReactNode;
-  emptyStateText?: string;
-  stickyTopOffset?: number;
+    tasks: Task[];
+    allTasks: Task[]; // Все задачи для проверки цепочек
+    legalEntityMap: Map<string, LegalEntity>;
+    selectedTaskIds: Set<string>;
+    selectableTaskIds: Set<string>;
+    onTaskSelect: (taskId: string, isSelected: boolean) => void;
+    onOpenDetail: (tasks: Task[], date: Date) => void;
+    onDeleteTask: (taskId: string) => void;
+    headerComponent?: React.ReactNode;
+    emptyStateText?: string;
+    stickyTopOffset?: number;
 }
 
 export const ReusableTaskList: React.FC<ReusableTaskListProps> = ({
-  tasks,
-  legalEntityMap,
-  selectedTaskIds,
-  onTaskSelect,
-  onOpenDetail,
-  onDeleteTask,
-  headerComponent,
-  emptyStateText = "Задачи не найдены.",
-  stickyTopOffset = 73
+    tasks,
+    allTasks,
+    legalEntityMap,
+    selectedTaskIds,
+    onTaskSelect,
+    onOpenDetail,
+    onDeleteTask,
+    headerComponent,
+    emptyStateText = "Задачи не найдены.",
+    stickyTopOffset = 73
 }) => {
     const scrollTargetRef = useRef<HTMLDivElement | null>(null);
 
@@ -67,20 +69,20 @@ export const ReusableTaskList: React.FC<ReusableTaskListProps> = ({
                     {headerComponent}
                 </div>
             )}
-            
+
             <div className="p-4">
                 {Array.from(groupedTasksByDate.entries()).map(([date, dateTasks]) => {
                     const [y, m, d] = date.split('-').map(Number);
                     const displayDate = new Date(y, m - 1, d);
                     return (
                         <div key={date} ref={el => { if (date === initialScrollTargetKey) scrollTargetRef.current = el; }} className="mb-6">
-                            <h3 
-                                className={`text-lg font-bold text-slate-700 border-b pb-2 mb-3 sticky bg-white py-2 z-10 ${date === todayISO ? 'text-indigo-600' : ''}`} 
+                            <h3
+                                className={`text-lg font-bold text-slate-700 border-b pb-2 mb-3 sticky bg-white py-2 z-10 ${date === todayISO ? 'text-indigo-600' : ''}`}
                                 style={{ top: `${stickyTopOffset}px`, transform: 'translateZ(0)' }}
                             >
                                 {displayDate.toLocaleString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' })}
                             </h3>
-                            
+
                             <div className="relative z-0 flex flex-col gap-3">
                                 {dateTasks.map(task => {
                                     const entity = legalEntityMap.get(task.legalEntityId);
@@ -91,6 +93,7 @@ export const ReusableTaskList: React.FC<ReusableTaskListProps> = ({
                                             task={task}
                                             clientName={clientName}
                                             isSelected={selectedTaskIds.has(task.id)}
+                                            allTasks={allTasks}
                                             onTaskSelect={onTaskSelect}
                                             onOpenDetail={() => onOpenDetail(dateTasks, displayDate)}
                                             onDeleteTask={onDeleteTask}

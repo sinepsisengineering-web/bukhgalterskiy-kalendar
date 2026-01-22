@@ -4,17 +4,19 @@ import React from 'react';
 import { Task, TaskStatus } from '../types';
 import { TASK_STATUS_STYLES } from '../constants';
 import { useConfirmation } from '../contexts/ConfirmationProvider';
+import { canCompleteTask } from '../services/taskGenerator';
 
 interface TaskItemProps {
   task: Task;
   clientName: string;
   isSelected: boolean;
+  allTasks: Task[]; // Все задачи для проверки цепочек
   onTaskSelect: (taskId: string, isSelected: boolean) => void;
   onOpenDetail: (task: Task) => void;
   onDeleteTask: (taskId: string) => void;
 }
 
-export const TaskItem: React.FC<TaskItemProps> = ({ task, clientName, isSelected, onTaskSelect, onOpenDetail, onDeleteTask }) => {
+export const TaskItem: React.FC<TaskItemProps> = ({ task, clientName, isSelected, allTasks, onTaskSelect, onOpenDetail, onDeleteTask }) => {
   const confirm = useConfirmation();
 
   if (!task) {
@@ -22,8 +24,15 @@ export const TaskItem: React.FC<TaskItemProps> = ({ task, clientName, isSelected
   }
 
   // <<< ОПРЕДЕЛЯЕМ СОСТОЯНИЕ БЛОКИРОВКИ НА ОСНОВЕ СТАТУСА >>>
-  const isLocked = task.status === TaskStatus.Locked;
+  const isLockedByPeriod = task.status === TaskStatus.Locked;
   const isCompleted = task.status === TaskStatus.Completed;
+
+  // <<< ПРОВЕРКА БЛОКИРОВКИ ПО ЦЕПОЧКЕ/СЕРИИ >>>
+  const canComplete = canCompleteTask(task, allTasks);
+  const isBlockedBySeries = !canComplete && !isCompleted;
+
+  // Объединяем все проверки блокировки
+  const isLocked = isLockedByPeriod || isBlockedBySeries;
 
   // <<< ВЫБИРАЕМ ПРАВИЛЬНЫЙ СТИЛЬ: Если задача заблокирована, используем стиль для Locked, иначе - ее текущий стиль >>>
   const finalStatusStyle = isLocked ? TASK_STATUS_STYLES[TaskStatus.Locked] : TASK_STATUS_STYLES[task.status];
@@ -37,7 +46,7 @@ export const TaskItem: React.FC<TaskItemProps> = ({ task, clientName, isSelected
 
   const handleDeleteClick = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    
+
     const isConfirmed = await confirm({
       title: 'Подтверждение удаления',
       message: `Вы уверены, что хотите удалить задачу "${task.title}"?`,
@@ -49,7 +58,7 @@ export const TaskItem: React.FC<TaskItemProps> = ({ task, clientName, isSelected
       onDeleteTask(task.id);
     }
   };
-  
+
   const handleOpenDetailClick = () => {
     // <<< ЗАПРЕЩАЕМ ОТКРЫВАТЬ ДЕТАЛИ ДЛЯ ЗАБЛОКИРОВАННЫХ ЗАДАЧ >>>
     if (isLocked) return;
@@ -75,7 +84,7 @@ export const TaskItem: React.FC<TaskItemProps> = ({ task, clientName, isSelected
         disabled={isLocked || isCompleted}
         className="h-5 w-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
       />
-      
+
       <div className="flex-1 min-w-0">
         {/* <<< ДОБАВЛЯЕМ СТИЛИ ДЛЯ ТЕКСТА ЗАБЛОКИРОВАННОЙ ЗАДАЧИ >>> */}
         <p className={`
@@ -87,7 +96,7 @@ export const TaskItem: React.FC<TaskItemProps> = ({ task, clientName, isSelected
         </p>
         <p className="text-sm text-slate-500 truncate">{clientName}</p>
       </div>
-      
+
       <div className="flex items-center gap-3 flex-shrink-0">
         <div className="hidden sm:flex flex-col items-end text-right">
           <p className={`text-sm font-medium ${isLocked ? 'text-slate-500' : finalStatusStyle.text}`}>{task.status}</p>
@@ -95,7 +104,7 @@ export const TaskItem: React.FC<TaskItemProps> = ({ task, clientName, isSelected
             {new Date(task.dueDate).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' })}
           </p>
         </div>
-        <button 
+        <button
           onClick={handleDeleteClick}
           className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors"
           title="Удалить задачу"

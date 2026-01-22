@@ -80,17 +80,34 @@ function calculateDueDate(year: number, periodIndex: number, rule: TaskRule): Da
 // 2. ГЕНЕРАЦИЯ АВТОМАТИЧЕСКИХ ЗАДАЧ
 // ==========================================
 
-export const generateTasksForLegalEntity = (legalEntity: LegalEntity): Task[] => {
+export const generateTasksForLegalEntity = (legalEntity: LegalEntity, nextYearAvailable: boolean = false): Task[] => {
   const allTasks: Task[] = [];
   const startDate = legalEntity.createdAt ? new Date(legalEntity.createdAt) : new Date();
   startDate.setHours(0, 0, 0, 0);
   const startYear = startDate.getFullYear();
-  const yearsToGenerate = [startYear, startYear + 1, startYear + 2, startYear + 3];
+  const currentYear = new Date().getFullYear();
+
+  // Генерируем с года создания (или текущего), но не более чем на год вперед от текущего
+  const yearsToGenerate: number[] = [];
+
+  // Добавляем годы начиная с года создания (если он не слишком старый, например, не старше 2 лет назад)
+  // но для простоты начнем с startYear
+  for (let y = startYear; y <= currentYear; y++) {
+    yearsToGenerate.push(y);
+  }
+
+  // Добавляем следующий год ТОЛЬКО если есть календарь
+  if (nextYearAvailable) {
+    yearsToGenerate.push(currentYear + 1);
+  }
+
+  // Убираем дубликаты (на случай если startYear > currentYear)
+  const uniqueYears = Array.from(new Set(yearsToGenerate)).sort((a, b) => a - b);
 
   // --- Генерация задач по правилам ---
   TASK_RULES.forEach(rule => {
     if (!rule.appliesTo(legalEntity)) { return; }
-    yearsToGenerate.forEach(year => {
+    uniqueYears.forEach(year => {
       const periods = rule.periodicity === RepeatFrequency.Monthly ? 12
         : rule.periodicity === RepeatFrequency.Quarterly ? 4 : 1;
 
@@ -149,7 +166,7 @@ export const generateTasksForLegalEntity = (legalEntity: LegalEntity): Task[] =>
   if (legalEntity.patents && legalEntity.patents.length > 0) {
     legalEntity.patents.forEach(patent => {
       const originalStartDate = new Date(patent.startDate);
-      const patentYearsToGenerate = yearsToGenerate.filter(y => y >= originalStartDate.getFullYear());
+      const patentYearsToGenerate = uniqueYears.filter(y => y >= originalStartDate.getFullYear());
 
       patentYearsToGenerate.forEach(year => {
         if (year > originalStartDate.getFullYear() && !patent.autoRenew) return;
@@ -299,29 +316,100 @@ export const getPredecessorTaskId = (task: Task): string | null => {
 };
 
 /**
+ * Получить ID серии задач.
+ * Если у задачи нет явного seriesId (старая задача), пытаемся вычислить его из ID.
+ */
+export const getEffectiveSeriesId = (task: Task): string | null => {
+  if (task.seriesId) return task.seriesId;
+
+  if (task.isAutomatic) {
+    // 1. Автоматические задачи по правилам
+    // ID формат: auto-{clientId}-{ruleId}-{year}-{periodIndex}
+    const autoMatch = task.id.match(/^auto-(.+)-([A-Za-z0-9_]+)-\d{4}-\d+$/);
+    if (autoMatch) {
+      const [, clientId, ruleId] = autoMatch;
+      return `series-auto-${clientId}-${ruleId}`;
+    }
+
+    // 2. Патенты
+    // ID формат: patent-{idSuffix}-{patent.id}-{year}
+    // Серия для патента: tasks за один год для одного патента?
+    // Мы генерируем seriesId как: `series-patent-${patent.id}-${year}`
+    // Попробуем извлечь patentId и year.
+    // Это сложнее из-за вариативного суффикса. Сделаем best-effort.
+    // Если id заканчивается на -{year}, берем последние 4 цифры как год.
+    // Всё что между patent-{suffix}-...-{year} сложно распарсить без знания suffix.
+    // Но так как seriesId генерируется при создании, отсутствие seriesId означает ОЧЕНЬ старую задачу.
+    // Для патентов пока вернем null, если не можем точно определить.
+  }
+
+  return null;
+};
+
+/**
  * Проверить, можно ли выполнить задачу (предшественник завершён)
  */
 export const canCompleteTask = (task: Task, allTasks: Task[]): boolean => {
+  // 1. Проверка цепочек автоматических задач
   const predecessorId = getPredecessorTaskId(task);
-  if (!predecessorId) return true;
+  if (predecessorId) {
+    const predecessor = allTasks.find(t => t.id === predecessorId);
+    if (predecessor && predecessor.status !== TaskStatus.Completed) {
+      return false;
+    }
+  }
 
-  const predecessor = allTasks.find(t => t.id === predecessorId);
-  if (!predecessor) return true;
+  // 2. Проверка серий задач (нельзя выполнить будущую, пока не выполнена прошлая)
+  const seriesId = getEffectiveSeriesId(task);
+  if (seriesId) {
+    const taskDate = new Date(task.dueDate).getTime();
 
-  return predecessor.status === TaskStatus.Completed;
+    // Фильтруем задачи, которые принадлежат к той же серии (явно или неявно)
+    const seriesTasks = allTasks.filter(t => t.id !== task.id && getEffectiveSeriesId(t) === seriesId);
+
+    const hasUncompletedPreviousTask = seriesTasks.some(t => {
+      // Ищем задачи с более ранней датой, которые не выполнены
+      return new Date(t.dueDate).getTime() < taskDate && t.status !== TaskStatus.Completed;
+    });
+
+    if (hasUncompletedPreviousTask) {
+      return false;
+    }
+  }
+
+  return true;
 };
 
 /**
  * Получить блокирующую задачу-предшественника
  */
 export const getBlockingPredecessor = (task: Task, allTasks: Task[]): Task | null => {
+  // 1. Блокировка автоматическим предшественником
   const predecessorId = getPredecessorTaskId(task);
-  if (!predecessorId) return null;
+  if (predecessorId) {
+    const predecessor = allTasks.find(t => t.id === predecessorId);
+    if (predecessor && predecessor.status !== TaskStatus.Completed) {
+      return predecessor;
+    }
+  }
 
-  const predecessor = allTasks.find(t => t.id === predecessorId);
-  if (!predecessor || predecessor.status === TaskStatus.Completed) return null;
+  // 2. Блокировка предыдущей задачей серии
+  const seriesId = getEffectiveSeriesId(task);
+  if (seriesId) {
+    const taskDate = new Date(task.dueDate).getTime();
+    const seriesTasks = allTasks.filter(t => t.id !== task.id && getEffectiveSeriesId(t) === seriesId);
 
-  return predecessor;
+    // Находим самую раннюю невыполненную задачу, которая идет перед текущей
+    const previousUncompleted = seriesTasks
+      .filter(t => new Date(t.dueDate).getTime() < taskDate && t.status !== TaskStatus.Completed)
+      .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())[0];
+
+    if (previousUncompleted) {
+      return previousUncompleted;
+    }
+  }
+
+  return null;
 };
 
 // ==========================================
@@ -431,4 +519,90 @@ export const updateTaskStatuses = (tasks: Task[]): Task[] => {
     const statusByDate = getTaskStatus(task.dueDate);
     return task.status === statusByDate ? task : { ...task, status: statusByDate };
   });
+};
+
+// ==========================================
+// 5. ГЕНЕРАЦИЯ ПОВТОРЯЮЩИХСЯ ЗАДАЧ (РУЧНЫЕ)
+// ==========================================
+
+export const generateRepeatingDates = (baseDate: Date, repeat: string): Date[] => {
+  const dates: Date[] = [];
+  const yearsToGenerate = 1; // Изменено с 3 на 1 по требованию пользователя
+
+  switch (repeat) {
+    case 'daily': {
+      for (let i = 0; i < 90; i++) {
+        const newDate = new Date(baseDate);
+        newDate.setDate(newDate.getDate() + i);
+        dates.push(newDate);
+      }
+      break;
+    }
+    case 'weekly': {
+      for (let i = 0; i < 52; i++) {
+        const newDate = new Date(baseDate);
+        newDate.setDate(newDate.getDate() + (i * 7));
+        dates.push(newDate);
+      }
+      break;
+    }
+    case 'monthly': {
+      const dayOfMonth = baseDate.getDate();
+      for (let i = 0; i < yearsToGenerate * 12; i++) {
+        const newDate = new Date(baseDate);
+        newDate.setMonth(newDate.getMonth() + i);
+        // Обработка перехода месяца (например, 31 число)
+        if (newDate.getDate() !== dayOfMonth) { newDate.setDate(0); }
+        dates.push(newDate);
+      }
+      break;
+    }
+    case 'quarterly': {
+      const dayOfMonth = baseDate.getDate();
+      for (let i = 0; i < yearsToGenerate * 4; i++) {
+        const newDate = new Date(baseDate);
+        newDate.setMonth(newDate.getMonth() + (i * 3));
+        if (newDate.getDate() !== dayOfMonth) { newDate.setDate(0); }
+        dates.push(newDate);
+      }
+      break;
+    }
+    case 'yearly': {
+      for (let i = 0; i < yearsToGenerate; i++) {
+        const newDate = new Date(baseDate);
+        newDate.setFullYear(newDate.getFullYear() + i);
+        dates.push(newDate);
+      }
+      break;
+    }
+    default:
+      dates.push(baseDate);
+  }
+  return dates;
+};
+
+
+// ==========================================
+// 6. УТИЛИТЫ УДАЛЕНИЯ
+// ==========================================
+
+export type DeletionMode = 'single' | 'series';
+
+export const getSeriesDeletionCandidates = (
+  allTasks: Task[],
+  taskToDelete: Task,
+  mode: DeletionMode
+): string[] => {
+  if (mode === 'single') {
+    return [taskToDelete.id];
+  }
+
+  // mode === 'series'
+  // Если у задачи нет серии, удаляем только её
+  if (!taskToDelete.seriesId) return [taskToDelete.id];
+
+  // Удаляем все задачи той же серии
+  return allTasks
+    .filter(t => t.seriesId === taskToDelete.seriesId)
+    .map(t => t.id);
 };

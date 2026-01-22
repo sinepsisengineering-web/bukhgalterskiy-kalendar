@@ -9,6 +9,7 @@ import { ClientForm } from './components/ClientForm';
 import { ClientDetailCard } from './components/ClientDetailCard';
 import { TaskForm } from './components/TaskForm';
 import { TaskDetailModal } from './components/TaskDetailModal';
+import { DeleteSeriesModal } from './components/DeleteSeriesModal';
 import { TasksListView } from './components/TasksListView';
 import { ArchiveView } from './components/ArchiveView';
 import { SettingsView } from './components/SettingsView';
@@ -86,6 +87,7 @@ const App: React.FC = () => {
         handleSaveTask, handleOpenNewTaskForm,
         handleOpenTaskDetail, handleToggleComplete, handleEditTaskFromDetail, handleDeleteTask,
         handleBulkComplete, handleBulkDelete, handleDeleteTasksForLegalEntity,
+        deleteSeriesModal, setDeleteSeriesModal, handleConfirmDeletion
     } = useTasks(activeLegalEntities, legalEntityMap);
 
     useEffect(() => {
@@ -222,6 +224,7 @@ const App: React.FC = () => {
             return <ClientDetailCard
                 legalEntity={selectedLegalEntity}
                 tasks={entityTasks}
+                allTasks={tasks}
                 onClose={() => setSelectedLegalEntity(null)}
                 onEdit={handleOpenLegalEntityForm}
                 onArchive={handleArchiveLegalEntity}
@@ -237,10 +240,10 @@ const App: React.FC = () => {
             />;
         }
         switch (activeView) {
-            case 'calendar': return <Calendar tasks={tasks} legalEntities={activeLegalEntities} onUpdateTaskStatus={() => { }} onAddTask={(date) => handleOpenNewTaskForm({ dueDate: date })} onOpenDetail={handleOpenTaskDetail} onDeleteTask={handleDeleteTask} />;
+            case 'calendar': return <Calendar tasks={tasks} allTasks={tasks} legalEntities={activeLegalEntities} onUpdateTaskStatus={() => { }} onAddTask={(date) => handleOpenNewTaskForm({ dueDate: date })} onOpenDetail={handleOpenTaskDetail} onDeleteTask={handleDeleteTask} />;
             case 'tasks':
                 const addTaskButton = (<button onClick={() => handleOpenNewTaskForm()} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors shadow" > <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" /></svg> Добавить задачу </button>);
-                return <TasksListView key={tasksViewKey} tasks={tasks} legalEntities={activeLegalEntities} onOpenDetail={handleOpenTaskDetail} onBulkUpdate={handleBulkComplete} onBulkDelete={handleBulkDelete} onDeleteTask={handleDeleteTask} customAddTaskButton={addTaskButton} />;
+                return <TasksListView key={tasksViewKey} tasks={tasks} allTasks={tasks} legalEntities={activeLegalEntities} onOpenDetail={handleOpenTaskDetail} onBulkUpdate={handleBulkComplete} onBulkDelete={handleBulkDelete} onDeleteTask={handleDeleteTask} customAddTaskButton={addTaskButton} />;
             case 'clients': return <ClientList legalEntities={activeLegalEntities} onSelectLegalEntity={setSelectedLegalEntity} onAddLegalEntity={() => handleOpenLegalEntityForm(null)} />;
             case 'archive': return <ArchiveView archivedLegalEntities={archivedLegalEntities} onUnarchive={handleUnarchiveLegalEntity} onDelete={() => { }} />;
             case 'settings': return <SettingsView onClearData={() => { }} />;
@@ -263,6 +266,13 @@ const App: React.FC = () => {
                 <TaskForm legalEntities={activeLegalEntities} onSave={handleSaveTask} onCancel={() => { setIsTaskModalOpen(false); setTaskToEdit(null); }} taskToEdit={taskToEdit} defaultDate={taskModalDefaultDate} />
             </Modal>
             <TaskDetailModal isOpen={isTaskDetailModalOpen} onClose={() => setIsTaskDetailModalOpen(false)} tasks={tasksForDetailView} allTasks={tasks} legalEntities={activeLegalEntities} onToggleComplete={handleToggleComplete} onEdit={handleEditTaskFromDetail} onDelete={handleDeleteTask} onSelectLegalEntity={(entity: LegalEntity) => { const le = legalEntities.find(le => le.id === entity.id); if (le) { setIsTaskDetailModalOpen(false); setSelectedLegalEntity(le); setActiveView('clients'); } }} />
+            <DeleteSeriesModal
+                isOpen={deleteSeriesModal.isOpen}
+                onClose={() => setDeleteSeriesModal({ isOpen: false, task: null })}
+                onDeleteSingle={() => handleConfirmDeletion('single')}
+                onDeleteSeries={() => handleConfirmDeletion('series')}
+                taskTitle={deleteSeriesModal.task?.title || ''}
+            />
         </div>
     );
 };

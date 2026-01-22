@@ -6,10 +6,12 @@ import { TaskItem } from './TaskItem';
 import { TASK_STATUS_STYLES } from '../constants';
 import { toISODateString, isWeekend } from '../utils/dateUtils';
 import { isHoliday } from '../services/holidayService';
+import { canCompleteTask, isTaskLocked } from '../services/taskGenerator';
 
 
 interface CalendarProps {
     tasks: Task[];
+    allTasks: Task[]; // Все задачи для проверки блокировки
     legalEntities: LegalEntity[];
     onUpdateTaskStatus: (taskId: string, status: TaskStatus) => void;
     onAddTask: (date: Date) => void;
@@ -26,8 +28,16 @@ const AddTaskButton: React.FC<{ onClick?: () => void }> = ({ onClick }) => (
     </button>
 );
 
+// Вспомогательная функция: проверяет заблокирована ли задача (и по периоду, и по цепочке)
+const isBlocked = (task: Task, allTasks: Task[]): boolean => {
+    if (task.status === TaskStatus.Completed) return false;
+    if (isTaskLocked(task)) return true;
+    return !canCompleteTask(task, allTasks);
+};
+
 interface DayViewProps {
     tasks: Task[];
+    allTasks: Task[]; // Все задачи для проверки цепочек
     legalEntities: LegalEntity[];
     currentDate: Date;
     onAddTask: (date: Date) => void;
@@ -35,7 +45,7 @@ interface DayViewProps {
     onDeleteTask: (taskId: string) => void;
 }
 
-const DayView: React.FC<DayViewProps> = ({ tasks, legalEntities, currentDate, onAddTask, onOpenDetail, onDeleteTask }) => {
+const DayView: React.FC<DayViewProps> = ({ tasks, allTasks, legalEntities, currentDate, onAddTask, onOpenDetail, onDeleteTask }) => {
     const tasksForDay = useMemo(() => tasks.filter(t => new Date(t.dueDate).toDateString() === currentDate.toDateString()), [tasks, currentDate]);
     const legalEntityMap = useMemo(() => new Map(legalEntities.map(le => [le.id, le])), [legalEntities]);
 
@@ -57,6 +67,7 @@ const DayView: React.FC<DayViewProps> = ({ tasks, legalEntities, currentDate, on
                             key={task.id}
                             task={task}
                             clientName={clientName}
+                            allTasks={allTasks}
                             onOpenDetail={() => onOpenDetail([task], new Date(task.dueDate))}
                             isSelected={false}
                             onTaskSelect={() => { }}
@@ -69,7 +80,7 @@ const DayView: React.FC<DayViewProps> = ({ tasks, legalEntities, currentDate, on
     );
 };
 
-const WeekView: React.FC<{ tasks: Task[]; legalEntities: LegalEntity[]; currentDate: Date; onSelectDate: (date: Date) => void; onAddTask: (date: Date) => void; onOpenDetail: (tasks: Task[], date: Date) => void; }> = ({ tasks, currentDate, onSelectDate, onAddTask, onOpenDetail }) => {
+const WeekView: React.FC<{ tasks: Task[]; allTasks: Task[]; legalEntities: LegalEntity[]; currentDate: Date; onSelectDate: (date: Date) => void; onAddTask: (date: Date) => void; onOpenDetail: (tasks: Task[], date: Date) => void; }> = ({ tasks, allTasks, currentDate, onSelectDate, onAddTask, onOpenDetail }) => {
     const today = new Date(); today.setHours(0, 0, 0, 0);
     const startOfWeek = new Date(currentDate);
     const day = startOfWeek.getDay();
@@ -101,19 +112,19 @@ const WeekView: React.FC<{ tasks: Task[]; legalEntities: LegalEntity[]; currentD
                             </div>
                             <div className="p-1 sm:p-2 space-y-1 sm:space-y-2 flex-1 min-h-[120px] overflow-y-auto">
                                 {tasksForDay.map(task => {
-                                    const isLocked = task.status === TaskStatus.Locked;
-                                    const statusStyle = isLocked ? TASK_STATUS_STYLES[TaskStatus.Locked] : TASK_STATUS_STYLES[task.status];
+                                    const taskBlocked = isBlocked(task, allTasks);
+                                    const statusStyle = taskBlocked ? TASK_STATUS_STYLES[TaskStatus.Locked] : TASK_STATUS_STYLES[task.status];
 
                                     return (
                                         <div
                                             key={task.id}
                                             onClick={() => {
-                                                if (isLocked) return;
+                                                if (taskBlocked) return;
                                                 onOpenDetail([task], new Date(task.dueDate))
                                             }}
                                             className={`text-xs p-1 rounded truncate transition-colors
                                                 ${task.status === TaskStatus.Completed ? 'bg-green-100 text-green-700 line-through' : `${statusStyle.bg} ${statusStyle.text}`}
-                                                ${isLocked ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}
+                                                ${taskBlocked ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}
                                             `}
                                             title={`${task.title}`}
                                         >
@@ -130,7 +141,7 @@ const WeekView: React.FC<{ tasks: Task[]; legalEntities: LegalEntity[]; currentD
     );
 };
 
-const MonthView: React.FC<{ tasks: Task[]; legalEntities: LegalEntity[]; currentDate: Date; onSelectDate: (date: Date) => void; onAddTask: (date: Date) => void; onOpenDetail: (tasks: Task[], date: Date) => void; }> = ({ tasks, currentDate, onSelectDate, onAddTask, onOpenDetail }) => {
+const MonthView: React.FC<{ tasks: Task[]; allTasks: Task[]; legalEntities: LegalEntity[]; currentDate: Date; onSelectDate: (date: Date) => void; onAddTask: (date: Date) => void; onOpenDetail: (tasks: Task[], date: Date) => void; }> = ({ tasks, allTasks, currentDate, onSelectDate, onAddTask, onOpenDetail }) => {
     const today = new Date(); today.setHours(0, 0, 0, 0);
     const monthStart = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
     const monthEnd = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
@@ -180,33 +191,40 @@ const MonthView: React.FC<{ tasks: Task[]; legalEntities: LegalEntity[]; current
                                 const uncompletedCount = uncompletedTasks.length;
                                 const isAllCompleted = uncompletedCount === 0;
 
-                                const overallStatus = isAllCompleted
-                                    ? TaskStatus.Completed
-                                    : uncompletedTasks.find(t => t.status === TaskStatus.Overdue)?.status ||
-                                    uncompletedTasks.find(t => t.status === TaskStatus.DueToday)?.status ||
-                                    uncompletedTasks.find(t => t.status === TaskStatus.DueSoon)?.status ||
-                                    uncompletedTasks.find(t => t.status === TaskStatus.Locked)?.status ||
-                                    TaskStatus.Upcoming;
+                                // Проверяем блокировку всех задач в группе
+                                const allBlocked = uncompletedTasks.every(t => isBlocked(t, allTasks));
+                                const groupBlocked = !isAllCompleted && allBlocked;
 
-                                const isLocked = overallStatus === TaskStatus.Locked;
-                                const statusStyle = TASK_STATUS_STYLES[overallStatus] || TASK_STATUS_STYLES[TaskStatus.Upcoming];
+                                // Определяем стиль: если заблокирована - серый (как Locked)
+                                let overallStyle = TASK_STATUS_STYLES[TaskStatus.Upcoming];
+                                if (isAllCompleted) {
+                                    overallStyle = TASK_STATUS_STYLES[TaskStatus.Completed];
+                                } else if (groupBlocked) {
+                                    overallStyle = TASK_STATUS_STYLES[TaskStatus.Locked];
+                                } else {
+                                    // Ищем самый срочный статус среди незаблокированных задач
+                                    const activeTask = uncompletedTasks.find(t => !isBlocked(t, allTasks));
+                                    if (activeTask) {
+                                        overallStyle = TASK_STATUS_STYLES[activeTask.status] || TASK_STATUS_STYLES[TaskStatus.Upcoming];
+                                    }
+                                }
 
                                 return (
                                     <div
                                         key={mainTask.seriesId || mainTask.id}
                                         onClick={(e) => {
                                             e.stopPropagation();
-                                            if (isLocked) return;
+                                            if (groupBlocked) return;
                                             onOpenDetail(group, new Date(mainTask.dueDate));
                                         }}
                                         className={`text-xs px-1.5 py-0.5 rounded truncate relative flex items-center justify-between gap-1 
-                                        ${isAllCompleted ? 'bg-green-100 text-green-700 line-through' : `${statusStyle.bg} ${statusStyle.text}`}
-                                        ${isLocked ? 'cursor-not-allowed opacity-70' : ''}
+                                        ${isAllCompleted ? 'bg-green-100 text-green-700 line-through' : `${overallStyle.bg} ${overallStyle.text}`}
+                                        ${groupBlocked ? 'cursor-not-allowed opacity-70' : ''}
                                     `}
                                         title={`${mainTask.title} (${isAllCompleted ? 'Выполнено' : `Невыполнено: ${uncompletedCount}`})`}>
                                         <span className="truncate flex-1">{mainTask.title}</span>
                                         {group.length > 1 && (
-                                            <span className={`flex-shrink-0 text-white text-[10px] font-bold w-4 h-4 flex items-center justify-center rounded-full ${isAllCompleted ? 'bg-green-500' : isLocked ? 'bg-gray-400' : statusStyle.bg.replace('-100', '-500')}`}>
+                                            <span className={`flex-shrink-0 text-white text-[10px] font-bold w-4 h-4 flex items-center justify-center rounded-full ${isAllCompleted ? 'bg-green-500' : groupBlocked ? 'bg-gray-400' : overallStyle.bg.replace('-100', '-500')}`}>
                                                 {isAllCompleted
                                                     ? (<svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>)
                                                     : uncompletedCount
@@ -226,7 +244,7 @@ const MonthView: React.FC<{ tasks: Task[]; legalEntities: LegalEntity[]; current
     )
 };
 
-const MiniMonthGrid: React.FC<{ year: number; month: number; tasks: Task[]; onSelectDate: (date: Date) => void; today: Date; onAddTask: (date: Date) => void; }> = ({ year, month, tasks, onSelectDate, today, onAddTask }) => {
+const MiniMonthGrid: React.FC<{ year: number; month: number; tasks: Task[]; allTasks: Task[]; onSelectDate: (date: Date) => void; today: Date; onAddTask: (date: Date) => void; }> = ({ year, month, tasks, allTasks, onSelectDate, today, onAddTask }) => {
     const monthStart = new Date(year, month, 1);
     const startDate = new Date(monthStart); startDate.setDate(startDate.getDate() - (startDate.getDay() === 0 ? 6 : startDate.getDay() - 1));
     const monthEnd = new Date(year, month + 1, 0);
@@ -245,7 +263,13 @@ const MiniMonthGrid: React.FC<{ year: number; month: number; tasks: Task[]; onSe
                     const isWknd = isWeekend(d);
                     const isHol = isHoliday(d);
                     const tasksForDay = isCurrentMonth ? tasks.filter(t => new Date(t.dueDate).toDateString() === d.toDateString()) : [];
-                    const statuses = [...new Set(tasksForDay.map(t => t.status))];
+
+                    // Определяем статусы с учётом блокировки
+                    const effectiveStatuses = tasksForDay.map(t =>
+                        isBlocked(t, allTasks) ? TaskStatus.Locked : t.status
+                    );
+                    const uniqueStatuses = [...new Set(effectiveStatuses)];
+
                     return (
                         <div key={i} onClick={() => isCurrentMonth && onSelectDate(d)} className={`p-1 text-center cursor-pointer rounded-md relative group ${!isCurrentMonth ? 'bg-slate-50' : ''} ${isCurrentMonth && (isWknd || isHol) ? 'bg-red-50' : ''} ${isCurrentMonth ? 'hover:bg-indigo-100' : ''}`}>
                             {isCurrentMonth && (
@@ -255,7 +279,7 @@ const MiniMonthGrid: React.FC<{ year: number; month: number; tasks: Task[]; onSe
                             )}
                             <span className={`text-xs ${!isCurrentMonth ? 'text-slate-300' : d.getTime() === today.getTime() ? 'text-indigo-600 font-bold' : (isWknd || isHol) ? 'text-red-600' : 'text-slate-600'}`}>{d.getDate()}</span>
                             <div className="flex justify-center items-center h-2 space-x-px mt-px">
-                                {isCurrentMonth && statuses.slice(0, 4).map((status: TaskStatus) => {
+                                {isCurrentMonth && uniqueStatuses.slice(0, 4).map((status: TaskStatus) => {
                                     const statusStyle = TASK_STATUS_STYLES[status] || TASK_STATUS_STYLES[TaskStatus.Upcoming];
                                     return <div key={status} className={`w-1.5 h-1.5 rounded-full opacity-75 ${statusStyle.bg.replace('-100', '-500')}`} />
                                 })}
@@ -268,31 +292,31 @@ const MiniMonthGrid: React.FC<{ year: number; month: number; tasks: Task[]; onSe
     );
 };
 
-const QuarterView: React.FC<{ tasks: Task[]; currentDate: Date; onSelectDate: (date: Date) => void; onAddTask: (date: Date) => void; }> = ({ tasks, currentDate, onSelectDate, onAddTask }) => {
+const QuarterView: React.FC<{ tasks: Task[]; allTasks: Task[]; currentDate: Date; onSelectDate: (date: Date) => void; onAddTask: (date: Date) => void; }> = ({ tasks, allTasks, currentDate, onSelectDate, onAddTask }) => {
     const today = new Date(); today.setHours(0, 0, 0, 0);
     const currentQuarter = Math.floor(currentDate.getMonth() / 3);
     const startMonth = currentQuarter * 3;
     return (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {[...Array(3)].map((_, i) => (
-                <MiniMonthGrid key={i} year={currentDate.getFullYear()} month={startMonth + i} tasks={tasks} onSelectDate={onSelectDate} today={today} onAddTask={onAddTask} />
+                <MiniMonthGrid key={i} year={currentDate.getFullYear()} month={startMonth + i} tasks={tasks} allTasks={allTasks} onSelectDate={onSelectDate} today={today} onAddTask={onAddTask} />
             ))}
         </div>
     );
 };
 
-const YearView: React.FC<{ tasks: Task[]; currentDate: Date; onSelectDate: (date: Date) => void; onAddTask: (date: Date) => void; }> = ({ tasks, currentDate, onSelectDate, onAddTask }) => {
+const YearView: React.FC<{ tasks: Task[]; allTasks: Task[]; currentDate: Date; onSelectDate: (date: Date) => void; onAddTask: (date: Date) => void; }> = ({ tasks, allTasks, currentDate, onSelectDate, onAddTask }) => {
     const today = new Date(); today.setHours(0, 0, 0, 0);
     return (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-6 gap-y-8">
             {[...Array(12)].map((_, i) => (
-                <MiniMonthGrid key={i} year={currentDate.getFullYear()} month={i} tasks={tasks} onSelectDate={onSelectDate} today={today} onAddTask={onAddTask} />
+                <MiniMonthGrid key={i} year={currentDate.getFullYear()} month={i} tasks={tasks} allTasks={allTasks} onSelectDate={onSelectDate} today={today} onAddTask={onAddTask} />
             ))}
         </div>
     );
 };
 
-export const Calendar: React.FC<CalendarProps> = ({ tasks, legalEntities, onUpdateTaskStatus, onAddTask, onOpenDetail, onDeleteTask }) => {
+export const Calendar: React.FC<CalendarProps> = ({ tasks, allTasks, legalEntities, onUpdateTaskStatus, onAddTask, onOpenDetail, onDeleteTask }) => {
     const [view, setView] = useState<CalendarView>('month');
     const [currentDate, setCurrentDate] = useState(new Date());
 
@@ -380,11 +404,11 @@ export const Calendar: React.FC<CalendarProps> = ({ tasks, legalEntities, onUpda
                 </div>
             </div>
 
-            {view === 'day' && <DayView tasks={tasks} legalEntities={legalEntities} currentDate={currentDate} onAddTask={onAddTask} onOpenDetail={onOpenDetail} onDeleteTask={onDeleteTask} />}
-            {view === 'week' && <WeekView tasks={tasks} legalEntities={legalEntities} currentDate={currentDate} onSelectDate={handleSelectDate} onAddTask={onAddTask} onOpenDetail={onOpenDetail} />}
-            {view === 'month' && <MonthView tasks={tasks} legalEntities={legalEntities} currentDate={currentDate} onSelectDate={handleSelectDate} onAddTask={onAddTask} onOpenDetail={onOpenDetail} />}
-            {view === 'quarter' && <QuarterView tasks={tasks} currentDate={currentDate} onSelectDate={handleSelectDate} onAddTask={onAddTask} />}
-            {view === 'year' && <YearView tasks={tasks} currentDate={currentDate} onSelectDate={handleSelectDate} onAddTask={onAddTask} />}
+            {view === 'day' && <DayView tasks={tasks} allTasks={allTasks} legalEntities={legalEntities} currentDate={currentDate} onAddTask={onAddTask} onOpenDetail={onOpenDetail} onDeleteTask={onDeleteTask} />}
+            {view === 'week' && <WeekView tasks={tasks} allTasks={allTasks} legalEntities={legalEntities} currentDate={currentDate} onSelectDate={handleSelectDate} onAddTask={onAddTask} onOpenDetail={onOpenDetail} />}
+            {view === 'month' && <MonthView tasks={tasks} allTasks={allTasks} legalEntities={legalEntities} currentDate={currentDate} onSelectDate={handleSelectDate} onAddTask={onAddTask} onOpenDetail={onOpenDetail} />}
+            {view === 'quarter' && <QuarterView tasks={tasks} allTasks={allTasks} currentDate={currentDate} onSelectDate={handleSelectDate} onAddTask={onAddTask} />}
+            {view === 'year' && <YearView tasks={tasks} allTasks={allTasks} currentDate={currentDate} onSelectDate={handleSelectDate} onAddTask={onAddTask} />}
         </div>
     );
 };

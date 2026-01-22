@@ -3,12 +3,13 @@
 import React, { useState, useMemo } from 'react';
 import { Task, LegalEntity } from '../types';
 import { FilterModal, FilterState } from './FilterModal';
-import { isTaskLocked } from '../services/taskGenerator';
+import { isTaskLocked, canCompleteTask } from '../services/taskGenerator';
 import { ReusableTaskList } from './ReusableTaskList';
 import { useConfirmation } from '../contexts/ConfirmationProvider';
 
 interface TasksListViewProps {
     tasks: Task[];
+    allTasks: Task[]; // Все задачи для проверки цепочек
     legalEntities: LegalEntity[];
     onOpenDetail: (tasks: Task[], date: Date) => void;
     onBulkUpdate: (taskIds: string[]) => void;
@@ -19,6 +20,7 @@ interface TasksListViewProps {
 
 export const TasksListView: React.FC<TasksListViewProps> = ({
     tasks,
+    allTasks,
     legalEntities,
     onOpenDetail,
     onBulkUpdate,
@@ -52,7 +54,9 @@ export const TasksListView: React.FC<TasksListViewProps> = ({
         });
     }, [tasks, filters, legalEntityMap, legalEntities.length]);
 
-    const selectableTaskIds = useMemo(() => new Set(filteredTasks.filter(task => !isTaskLocked(task)).map(t => t.id)), [filteredTasks]);
+    const selectableTaskIds = useMemo(() => {
+        return new Set(filteredTasks.map(t => t.id));
+    }, [filteredTasks]);
 
     const handleSelectAll = () => setSelectedTasks(new Set(selectableTaskIds));
     const handleDeselectAll = () => setSelectedTasks(new Set());
@@ -68,26 +72,51 @@ export const TasksListView: React.FC<TasksListViewProps> = ({
 
     const handleBulkComplete = () => {
         if (selectedTasks.size === 0) return;
-        onBulkUpdate(Array.from(selectedTasks));
-        setSelectedTasks(new Set());
+
+        // Filter tasks that can actually be completed
+        const tasksToComplete = tasks.filter(t =>
+            selectedTasks.has(t.id) &&
+            !isTaskLocked(t) &&
+            canCompleteTask(t, tasks)
+        ).map(t => t.id);
+
+        if (tasksToComplete.length > 0) {
+            onBulkUpdate(tasksToComplete);
+            // Optionally we could keep selected tasks that weren't completed, 
+            // but clearing selection is standard behavior
+            setSelectedTasks(new Set());
+        }
     };
-    
+
     const handleBulkDelete = async () => {
         if (selectedTasks.size === 0) return;
 
+        // Filter valid tasks for deletion (e.g. non-automatic)
+        const tasksToDelete = tasks.filter(t =>
+            selectedTasks.has(t.id) &&
+            !t.isAutomatic
+        ).map(t => t.id);
+
+        if (tasksToDelete.length === 0) return;
+
         const isConfirmed = await confirm({
- title: 'Подтверждение удаления',
-  message: (
-    <>
-      <p>Вы уверены, что хотите удалить задачу?</p>
-      <p className="text-sm text-slate-500 mt-2">Связанный клиент: ...</p>
-    </>
-  ),
-  confirmButtonText: 'Удалить',
-  confirmButtonClass: 'bg-red-600 hover:bg-red-700'        });
+            title: 'Подтверждение удаления',
+            message: (
+                <>
+                    <p>Вы уверены, что хотите удалить выбранные задачи ({tasksToDelete.length})?</p>
+                    {tasksToDelete.length < selectedTasks.size && (
+                        <p className="text-sm text-yellow-600 mt-2">
+                            Некоторые задачи (автоматические) не могут быть удалены и будут пропущены.
+                        </p>
+                    )}
+                </>
+            ),
+            confirmButtonText: 'Удалить',
+            confirmButtonClass: 'bg-red-600 hover:bg-red-700'
+        });
 
         if (isConfirmed) {
-            onBulkDelete(Array.from(selectedTasks));
+            onBulkDelete(tasksToDelete);
             setSelectedTasks(new Set());
         }
     };
@@ -96,6 +125,7 @@ export const TasksListView: React.FC<TasksListViewProps> = ({
         <>
             <ReusableTaskList
                 tasks={filteredTasks}
+                allTasks={allTasks}
                 legalEntityMap={legalEntityMap}
                 selectedTaskIds={selectedTasks}
                 selectableTaskIds={selectableTaskIds}
@@ -130,8 +160,8 @@ export const TasksListView: React.FC<TasksListViewProps> = ({
                     </div>
                 }
             />
-            
-            <FilterModal 
+
+            <FilterModal
                 isOpen={isFilterModalOpen} onClose={() => setIsFilterModalOpen(false)}
                 clients={legalEntities} availableYears={availableYears} filters={filters} onApplyFilters={setFilters}
             />
